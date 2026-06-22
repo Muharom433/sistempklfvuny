@@ -5354,7 +5354,7 @@ reader.readAsDataURL(file);`}
               </div>
 
               {/* Comprehensive Portfolio (Docs table list) */}
-              <div id="doc-print-container" className="bg-white border border-slate-200 p-6 rounded-2xl shadow flex flex-col justify-between min-h-[500px]">
+              <div id="doc-print-container" className="bg-white print:border-none print:shadow-none print:rounded-none print:p-0 print:m-0 border border-slate-200 p-6 rounded-2xl shadow flex flex-col justify-between min-h-[500px]">
                 <div>
                   <div className="text-center font-bold text-xs uppercase border-b pb-2 mb-4 leading-normal text-slate-800">
                     PORTOFOLIO REKAPITULASI PROGRAM MAGANG <br />
@@ -5575,15 +5575,23 @@ reader.readAsDataURL(file);`}
                           document.body.removeChild(link);
                         }
                         
-                        // 2. Download Portofolio PDF dari Base64 secara otomatis
-                        if (data.portBase64) {
-                          const link2 = document.createElement('a');
-                          link2.href = `data:application/pdf;base64,${data.portBase64}`;
-                          link2.download = `Portofolio_${printDocument.studentName.replace(/ /g, '_')}.pdf`;
-                          document.body.appendChild(link2);
-                          link2.click();
-                          document.body.removeChild(link2);
-                        }
+                        // 2. Download Portofolio PDF dari Base64 secara otomatis (Dihapus, diganti Print Browser)
+                        
+                        // Memanggil window.print() untuk Portofolio Estetik
+                        const originalDisplay = document.getElementById('root')?.style.display;
+                        if(document.getElementById('root')) document.getElementById('root')!.style.display = 'none';
+                        
+                        const printDiv = document.createElement('div');
+                        printDiv.id = 'print-section';
+                        printDiv.className = 'w-full bg-white';
+                        printDiv.innerHTML = document.getElementById('doc-print-container')?.outerHTML || '';
+                        document.body.appendChild(printDiv);
+                        
+                        setTimeout(() => {
+                          window.print();
+                          document.body.removeChild(printDiv);
+                          if(document.getElementById('root')) document.getElementById('root')!.style.display = originalDisplay || '';
+                        }, 500);
                         
                       } else {
                         const errMsg = data.message || (data.error ? JSON.stringify(data.error) : JSON.stringify(data));
@@ -5597,30 +5605,7 @@ reader.readAsDataURL(file);`}
                   className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-sky-950 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md"
                 >
                   <Download className="w-4 h-4" />
-                   Export PDF (Google Docs)
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => {
-                    const originalDisplay = document.getElementById('root')?.style.display;
-                    if(document.getElementById('root')) document.getElementById('root')!.style.display = 'none';
-                    
-                    const printDiv = document.createElement('div');
-                    printDiv.id = 'print-section';
-                    printDiv.className = 'w-full max-w-[1056px] mx-auto p-8';
-                    printDiv.innerHTML = document.getElementById('doc-print-container')?.outerHTML || '';
-                    document.body.appendChild(printDiv);
-                    
-                    window.print();
-                    
-                    document.body.removeChild(printDiv);
-                    if(document.getElementById('root')) document.getElementById('root')!.style.display = originalDisplay || '';
-                  }}
-                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ml-1"
-                  title="Cetak tampilan estetik ini langsung jadi PDF!"
-                >
-                  <Download className="w-4 h-4" />
-                   Unduh Desain Estetik (PDF)
+                   Export PDF (Sertifikat & Portofolio)
                 </button>
               </div>
             </div>
