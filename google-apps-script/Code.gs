@@ -436,7 +436,6 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
       ['{{NIS}}',     studentNim],       ['<<NIS>>',     studentNim],
       ['{{NOMOR}}',   studentNomorSurat],['<<Nomor>>',   studentNomorSurat],
       ['{{PERIODE}}', studentPeriode.toString()],['<<Periode>>', studentPeriode.toString()],
-      ['{{NILAI}}',   overallGrade.toString()],  ['<<Nilai>>',   overallGrade.toString()],
       ['{{RATARATA}}',overallGrade.toString()],  ['<<RataRata>>',overallGrade.toString()],
       ['{{PREDIKAT}}',predikat],         ['<<Predikat>>',predikat],
       ['{{MULAI}}',   tanggalMulaiID],   ['<<Mulai>>',   tanggalMulaiID],
@@ -451,6 +450,8 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
     const slideCopy = DriveApp.getFileById(slideTemplateId).makeCopy('Sertifikat_' + studentName, outputFolder);
     const presentation = SlidesApp.openById(slideCopy.getId());
     replacements.forEach(function(pair) { try { presentation.replaceAllText(pair[0], pair[1]); } catch(e) {} });
+    try { presentation.replaceAllText('{{NILAI}}', overallGrade.toString()); } catch(e) {}
+    try { presentation.replaceAllText('<<Nilai>>', overallGrade.toString()); } catch(e) {}
     presentation.saveAndClose();
     const certPdfBlob = slideCopy.getAs('application/pdf');
     const certBase64  = Utilities.base64Encode(certPdfBlob.getBytes());
