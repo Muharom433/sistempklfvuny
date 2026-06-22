@@ -4032,6 +4032,33 @@ export default function App() {
                               </div>
                             </div>
                             <div>
+                               <label className="block text-[10px] uppercase font-extrabold text-[#003a70] mb-0.5">ID Template Portofolio Akhir (Google Docs)</label>
+                               <span className="text-[9px] text-slate-400 block mb-1.5 leading-normal">Template dokumen Portofolio Rekapitulasi Akhir yang digunakan saat cetak PDF Portofolio. <strong className="text-orange-600">Harus dipisahkan dari template Logbook!</strong></span>
+                               <div className="flex gap-2">
+                                 <input 
+                                   type="text" 
+                                   className="flex-1 text-xs font-mono px-3.5 py-2 border border-orange-300 rounded-lg outline-none text-slate-800 bg-orange-50/30 focus:bg-white focus:border-orange-500"
+                                   placeholder="Masukkan ID Google Docs template Portofolio..."
+                                   value={portfolioTemplateInput}
+                                   onChange={(e) => setPortfolioTemplateInput(e.target.value)}
+                                 />
+                                 <button 
+                                   type="button"
+                                   onClick={() => {
+                                     if (!portfolioTemplateInput) return;
+                                     const url = portfolioTemplateInput.startsWith('http') 
+                                       ? portfolioTemplateInput 
+                                       : `https://docs.google.com/document/d/${portfolioTemplateInput}/edit`;
+                                     window.open(url, '_blank');
+                                   }}
+                                   className="px-3 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-xs font-semibold transition-all border border-orange-200 flex items-center justify-center gap-1 shrink-0"
+                                   title="Lihat/Edit Template Portofolio"
+                                 >
+                                   <ExternalLink className="w-3.5 h-3.5" /> Lihat
+                                 </button>
+                               </div>
+                            </div>
+                            <div>
                               <label className="block text-[10px] uppercase font-extrabold text-[#003a70] mb-0.5">ID Template Sertifikat Kelulusan (Google Slides)</label>
                               <span className="text-[9px] text-slate-400 block mb-1.5 leading-normal">Template desain sertifikat magang bernomor seri dari UNY.</span>
                               <div className="flex gap-2">
