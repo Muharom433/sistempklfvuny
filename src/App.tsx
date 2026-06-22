@@ -1016,7 +1016,9 @@ export default function App() {
 
     const counts: Record<string, number> = {};
     studentLogs.forEach(l => {
-      counts[l.category] = (counts[l.category] || 0) + 1;
+      const task = tasks.find(t => t.taskId === l.taskId || t.taskName === l.taskName);
+      const cat = task?.category || l.category || 'Lainnya';
+      counts[cat] = (counts[cat] || 0) + 1;
     });
 
     const list = Object.keys(counts).map(cat => ({
@@ -2588,7 +2590,7 @@ export default function App() {
                                       <td className="py-3 font-semibold text-slate-800">{log.taskName}</td>
                                       <td className="py-3 text-slate-400">{log.timestamp.split(' ')[0]}</td>
                                       <td className="py-3">
-                                        <a href={log.fileUrl} target="_blank" rel="noreferrer" className="text-[#003a70] underline flex items-center gap-1 hover:text-[#002244] font-bold">
+                                        <a href={log.googleDocUrl || log.fileUrl || '#'} target="_blank" rel="noreferrer" className="text-[#003a70] underline flex items-center gap-1 hover:text-[#002244] font-bold">
                                           Tinjau Berkas
                                         </a>
                                       </td>
@@ -2866,7 +2868,7 @@ export default function App() {
                                           <td className="py-3 font-semibold text-slate-800">{log.taskName}</td>
                                           <td className="py-3 text-slate-400">{log.timestamp.split(' ')[0]}</td>
                                           <td className="py-3">
-                                            <a href={log.fileUrl} target="_blank" rel="noreferrer" className="text-[#003a70] underline flex items-center gap-1 hover:text-[#002244] font-bold">
+                                            <a href={log.googleDocUrl || log.fileUrl || '#'} target="_blank" rel="noreferrer" className="text-[#003a70] underline flex items-center gap-1 hover:text-[#002244] font-bold">
                                               Tinjau Berkas
                                             </a>
                                           </td>
@@ -3145,7 +3147,7 @@ export default function App() {
                                         <p className="text-[10px] text-slate-400 max-w-[200px] truncate">{log.workDescription}</p>
                                       </td>
                                       <td className="py-3">
-                                        <a href={log.fileUrl} target="_blank" rel="noreferrer" className="text-[#003a70] underline hover:text-[#002244] font-bold">
+                                        <a href={log.googleDocUrl || log.fileUrl || '#'} target="_blank" rel="noreferrer" className="text-[#003a70] underline hover:text-[#002244] font-bold">
                                           Tinjau Berkas
                                         </a>
                                       </td>
