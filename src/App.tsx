@@ -915,6 +915,7 @@ export default function App() {
     tanggalMulai?: string;
     tanggalSelesai?: string;
     nomorSurat?: string;
+    role?: string;
     logs: { 
       name: string; 
       category: string; 
@@ -1833,7 +1834,8 @@ export default function App() {
         periode: student.periode,
         tanggalMulai: student.tanggalMulai,
         tanggalSelesai: student.tanggalSelesai,
-        nomorSurat: student.nomorSurat
+        nomorSurat: student.nomorSurat,
+        role: student.role
       });
       setCertQuickEditNomorSurat(student.nomorSurat || '');
     });
@@ -5511,7 +5513,7 @@ reader.readAsDataURL(file);`}
                           name: printDocument.studentName,
                           nim: printDocument.studentNim.toString(),
                           email: printDocument.email || '',
-                          role: activeUser?.role || 'Anggota',
+                          role: printDocument.role || 'Anggota',
                           periode: printDocument.periode || 3,
                           tanggalMulai: printDocument.tanggalMulai || '',
                           tanggalSelesai: printDocument.tanggalSelesai || '',

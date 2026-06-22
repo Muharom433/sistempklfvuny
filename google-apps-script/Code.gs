@@ -433,9 +433,11 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
     const replacements = [
       ['{{NAMA}}',    studentName],      ['<<Nama>>',    studentName],
       ['{{NIM}}',     studentNim],       ['<<NIM>>',     studentNim],
+      ['{{NIS}}',     studentNim],       ['<<NIS>>',     studentNim],
       ['{{NOMOR}}',   studentNomorSurat],['<<Nomor>>',   studentNomorSurat],
       ['{{PERIODE}}', studentPeriode.toString()],['<<Periode>>', studentPeriode.toString()],
       ['{{NILAI}}',   overallGrade.toString()],  ['<<Nilai>>',   overallGrade.toString()],
+      ['{{RATARATA}}',overallGrade.toString()],  ['<<RataRata>>',overallGrade.toString()],
       ['{{PREDIKAT}}',predikat],         ['<<Predikat>>',predikat],
       ['{{MULAI}}',   tanggalMulaiID],   ['<<Mulai>>',   tanggalMulaiID],
       ['{{SELESAI}}', tanggalSelesaiID], ['<<Selesai>>', tanggalSelesaiID],
