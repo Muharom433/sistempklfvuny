@@ -1,5 +1,5 @@
 /**
- * SERVER CODE (Code.gs)
+ * SERVER CODE (Code.gs) — VERSI GABUNGAN FINAL
  * Google Apps Script backend for the UNY Vocational Faculty (IT Network Department) Internship Portal.
  * 
  * Instructions:
@@ -7,23 +7,51 @@
  * 2. In Google Spreadsheet, go to Extensions > Apps Script.
  * 3. Replace the Code.gs content with this code.
  * 4. Create an Index.html file in the Apps Script project and paste the Index.html content.
- * 5. Configure the SCRIPT PROPERTIES in Apps Script Settings (or use the Setup button in the app to initialize them automatically).
- *    - DRIVE_FOLDER_ID: ID of the folder where member logbook file uploads are stored.
- *    - DOC_TEMPLATE_ID: ID of the Google Docs Portfolio template.
- *    - SLIDE_TEMPLATE_ID: ID of the Google Slides Certificate template.
- * 6. Deploy as a Web App (Execute as: "Me", Who has access: "Anyone").
+ * 5. (Opsional) Isi FALLBACK_SPREADSHEET_ID jika script berjalan standalone (bukan dari dalam Spreadsheet).
+ * 6. Configure the SCRIPT PROPERTIES di menu Pengaturan PIC di web app:
+ *    - DRIVE_FOLDER_ID     : ID folder Google Drive tempat file upload disimpan.
+ *    - DOC_TEMPLATE_ID     : ID template Google Docs LOGBOOK HARIAN.
+ *    - PORTFOLIO_TEMPLATE_ID: ID template Google Docs PORTOFOLIO AKHIR (BERBEDA dari logbook!).
+ *    - SLIDE_TEMPLATE_ID   : ID template Google Slides SERTIFIKAT KELULUSAN.
+ * 7. Deploy as a Web App (Execute as: "Me", Who has access: "Anyone").
  */
 
 // Global Configurations / Property Keys
-const PROP_DRIVE_FOLDER_ID = 'DRIVE_FOLDER_ID';
-const PROP_DOC_TEMPLATE_ID = 'DOC_TEMPLATE_ID'; // Logbook Template
-const PROP_PORTFOLIO_TEMPLATE_ID = 'PORTFOLIO_TEMPLATE_ID'; // Portfolio Template
-const PROP_SLIDE_TEMPLATE_ID = 'SLIDE_TEMPLATE_ID';
+const PROP_DRIVE_FOLDER_ID      = 'DRIVE_FOLDER_ID';
+const PROP_DOC_TEMPLATE_ID      = 'DOC_TEMPLATE_ID';       // Template Logbook Harian
+const PROP_PORTFOLIO_TEMPLATE_ID = 'PORTFOLIO_TEMPLATE_ID'; // Template Portofolio Akhir
+const PROP_SLIDE_TEMPLATE_ID    = 'SLIDE_TEMPLATE_ID';
+
+// JIKA MENGALAMI ERROR "Cannot read properties of null (reading 'getSheetByName')",
+// PASTE ID SPREADSHEET GOOGLE ANDA DI DALAM TANDA KUTIP DI BAWAH INI:
+const FALLBACK_SPREADSHEET_ID = '';
 
 /**
- * Serves the HTML file when the Web App URL is loaded
+ * Serves the HTML file when the Web App URL is loaded,
+ * OR handles GET API requests if action parameter is provided.
  */
 function doGet(e) {
+  if (e && e.parameter && e.parameter.action === 'export_certificate') {
+    try {
+      const payloadStr = e.parameter.payload;
+      if (!payloadStr) throw new Error("Payload data kosong");
+      const payload = JSON.parse(payloadStr);
+      const result = generatePortfolioAndCertificate(
+        payload.studentData,
+        payload.logbooks,
+        payload.driveId,
+        payload.portfolioId,
+        payload.slideId
+      );
+      return ContentService.createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (error) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: error.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // Fallback: Serve UI HTML
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('UNY IT Network Internship Portal')
@@ -32,24 +60,35 @@ function doGet(e) {
 }
 
 /**
- * Handles POST requests from the React frontend
- * Acts as an API router based on the 'action' field in the JSON body
+ * Handles incoming POST requests — API router utama dari React frontend.
+ * Mendukung action:
+ *   - 'export_certificate'   : Generate PDF Sertifikat + Portofolio (Base64)
+ *   - 'generate_logbook_doc' : Salin template Logbook Harian (lama — dipertahankan untuk kompatibilitas)
+ *   - 'generateTaskLogbook'  : Salin template Logbook Harian (versi baru, lebih lengkap)
  */
 function doPost(e) {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  };
-  
   try {
-    const body = JSON.parse(e.postData.contents);
-    const action = body.action;
-    const payload = body.payload || {};
+    if (!e || !e.postData) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'No data received' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
+    const params = JSON.parse(e.postData.contents);
+    const action = params.action;
+    const payload = params.payload || {};
     let result;
     
     switch (action) {
+      case 'export_certificate':
+        result = generatePortfolioAndCertificate(
+          payload.studentData,
+          payload.logbooks,
+          payload.driveId,
+          payload.portfolioId,  // ← Sekarang menggunakan portfolioId, bukan docId
+          payload.slideId
+        );
+        break;
+      
       case 'generateTaskLogbook':
         result = generateTaskLogbook(
           payload.studentNim,
@@ -66,53 +105,54 @@ function doPost(e) {
         );
         break;
       
-      case 'export_certificate':
-        result = generatePortfolioAndCertificate(
-          payload.studentData.nim,
-          payload.studentData.overallGrade
-        );
-        break;
-      
       case 'generate_logbook_doc':
-        // Legacy handler kept for backward compatibility
-        result = { success: false, message: 'Gunakan action generateTaskLogbook sebagai ganti.' };
+        // Versi lama — tetap berfungsi
+        result = generateLogbookDoc(
+          payload.studentData,
+          payload.taskData,
+          payload.driveId,
+          payload.docId
+        );
         break;
       
       default:
         result = { success: false, message: 'Action tidak dikenal: ' + action };
     }
     
-    return ContentService
-      .createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
-      
+    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+    
   } catch (error) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ success: false, message: 'Server Error: ' + error.toString() }))
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Server Error: ' + error.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
+
 /**
  * Access helper for the Active Spreadsheet
+ * — mendukung FALLBACK_SPREADSHEET_ID jika script standalone
  */
 function getSpreadsheet() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  const activeSs = SpreadsheetApp.getActiveSpreadsheet();
+  if (activeSs) return activeSs;
+  
+  if (FALLBACK_SPREADSHEET_ID && FALLBACK_SPREADSHEET_ID.trim() !== '') {
+    return SpreadsheetApp.openById(FALLBACK_SPREADSHEET_ID);
+  }
+  
+  throw new Error("Spreadsheet tidak terdeteksi. Isi FALLBACK_SPREADSHEET_ID di Code.gs dengan ID Spreadsheet Anda.");
 }
 
 /**
  * Initialize Tables, Sheets, and default data structures.
- * Can be run from the Spreadsheet or triggered via Web UI for auto-setup.
  */
 function setupDatabase() {
   const ss = getSpreadsheet();
   
-  // 1. Create Sheets with columns if they do not exist
-  // Users: kolom diperluas dengan Periode, TanggalMulai, TanggalSelesai, NomorSurat
   const requiredSheets = {
-    'Users': ['NIM', 'Name', 'Email', 'Password', 'Role', 'Periode', 'TanggalMulai', 'TanggalSelesai', 'NomorSurat'],
+    'Users':    ['NIM', 'Name', 'Email', 'Password', 'Role', 'Periode', 'TanggalMulai', 'TanggalSelesai', 'NomorSurat'],
     'Jobdesks': ['RoleName', 'Jobdesks'],
-    'Tasks': ['TaskId', 'TaskName', 'Category', 'Description', 'AssignedNIM', 'Status', 'CreatedBy'],
+    'Tasks':    ['TaskId', 'TaskName', 'Category', 'Description', 'AssignedNIM', 'Status', 'CreatedBy'],
     'Logbooks': ['LogbookId', 'NIM', 'TaskId', 'TaskName', 'Category', 'Timestamp', 'WorkDescription', 'FileUrl', 'FileName', 'Grade', 'Notes']
   };
   
@@ -122,14 +162,11 @@ function setupDatabase() {
       sheet = ss.insertSheet(sheetName);
       sheet.appendRow(requiredSheets[sheetName]);
       sheet.getRange(1, 1, 1, requiredSheets[sheetName].length)
-           .setFontWeight('bold')
-           .setBackground('#003366')
-           .setFontColor('#FFFFFF');
+           .setFontWeight('bold').setBackground('#003366').setFontColor('#FFFFFF');
       sheet.setFrozenRows(1);
     }
   }
   
-  // 2. Pre-populate default Jobdesks if empty
   const jobdeskSheet = ss.getSheetByName('Jobdesks');
   if (jobdeskSheet.getLastRow() <= 1) {
     const defaultJobdesks = [
@@ -143,7 +180,6 @@ function setupDatabase() {
     defaultJobdesks.forEach(function(row) { jobdeskSheet.appendRow(row); });
   }
   
-  // 3. Populate default PIC user if empty
   const userSheet = ss.getSheetByName('Users');
   if (userSheet.getLastRow() <= 1) {
     userSheet.appendRow(['19600101', 'PIC Dosen Koordinator', 'pic.itnetwork@uny.ac.id', 'pic123', 'PIC', 12, '2026-01-01', '2026-12-31', '']);
@@ -175,88 +211,46 @@ function getPredicate(grade) {
   return 'TIDAK LULUS';
 }
 
-/**
- * Register a new user
- * Default role is 'Anggota'
- * Parameter opsional: periode, tanggalMulai, tanggalSelesai, nomorSurat
- */
 function registerUser(nim, name, email, password, periode, tanggalMulai, tanggalSelesai, nomorSurat) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Users');
   const data = sheet.getDataRange().getValues();
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === nim.toString()) {
       return { success: false, message: 'NIM ' + nim + ' sudah terdaftar!' };
     }
   }
-  
-  sheet.appendRow([
-    nim.toString(), name, email, password, 'Anggota',
-    periode || 3,
-    tanggalMulai || '',
-    tanggalSelesai || '',
-    nomorSurat || ''
-  ]);
+  sheet.appendRow([nim.toString(), name, email, password, 'Anggota', periode || 3, tanggalMulai || '', tanggalSelesai || '', nomorSurat || '']);
   return { success: true, message: 'Registrasi Berhasil! Silakan Login.' };
 }
 
-/**
- * Validate credentials and login
- */
 function loginUser(nim, password) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Users');
   const data = sheet.getDataRange().getValues();
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === nim.toString() && data[i][3].toString() === password.toString()) {
-      return {
-        success: true,
-        user: {
-          nim: data[i][0],
-          name: data[i][1],
-          email: data[i][2],
-          role: data[i][4],
-          periode: data[i][5] || 3,
-          tanggalMulai: data[i][6] || '',
-          tanggalSelesai: data[i][7] || '',
-          nomorSurat: data[i][8] || ''
-        }
-      };
+      return { success: true, user: { nim: data[i][0], name: data[i][1], email: data[i][2], role: data[i][4], periode: data[i][5] || 3, tanggalMulai: data[i][6] || '', tanggalSelesai: data[i][7] || '', nomorSurat: data[i][8] || '' } };
     }
   }
   return { success: false, message: 'NIM atau Password salah!' };
 }
 
-/**
- * Get all users registered in the system
- */
 function getUsersList() {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Users');
   const data = sheet.getDataRange().getValues();
   const users = [];
-  
   for (let i = 1; i < data.length; i++) {
-    users.push({
-      nim: data[i][0],
-      name: data[i][1],
-      email: data[i][2],
-      role: data[i][4]
-    });
+    users.push({ nim: data[i][0], name: data[i][1], email: data[i][2], role: data[i][4] });
   }
   return users;
 }
 
-/**
- * Update a specific user's role (PIC Action)
- */
 function updateUserRole(nim, newRole) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Users');
   const data = sheet.getDataRange().getValues();
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === nim.toString()) {
       sheet.getRange(i + 1, 5).setValue(newRole);
@@ -266,254 +260,129 @@ function updateUserRole(nim, newRole) {
   return { success: false, message: 'NIM tidak ditemukan!' };
 }
 
-/**
- * Get standard jobdesks for all roles
- */
 function getJobdesks() {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Jobdesks');
   const data = sheet.getDataRange().getValues();
   const jobdesks = {};
-  
-  for (let i = 1; i < data.length; i++) {
-    jobdesks[data[i][0]] = data[i][1];
-  }
+  for (let i = 1; i < data.length; i++) { jobdesks[data[i][0]] = data[i][1]; }
   return jobdesks;
 }
 
-/**
- * Save / Update a list of jobdesks for a specific role (PIC Action)
- */
 function saveJobdesk(roleName, jobdeskText) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Jobdesks');
   const data = sheet.getDataRange().getValues();
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === roleName) {
       sheet.getRange(i + 1, 2).setValue(jobdeskText);
       return { success: true, message: 'Jobdesk untuk ' + roleName + ' berhasil diperbarui!' };
     }
   }
-  // If role doesn't exist, append new
   sheet.appendRow([roleName, jobdeskText]);
   return { success: true, message: 'Role baru ' + roleName + ' dan Jobdesk berhasil ditambahkan!' };
 }
 
-/**
- * Get core responsibilities for a specific active member's role
- */
 function getMemberJobdesk(role) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Jobdesks');
   const data = sheet.getDataRange().getValues();
-  
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === role) {
-      return data[i][1];
-    }
+    if (data[i][0] === role) return data[i][1];
   }
   return "Jobdesk belum diinput oleh PIC.";
 }
 
-/**
- * Create and delegate new tasks (Ketua Action)
- */
 function createTask(taskName, category, description, assignedNim, ketuaNim) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Tasks');
   const taskId = 'TSK-' + new Date().getTime();
-  
   sheet.appendRow([taskId, taskName, category, description, assignedNim.toString(), 'Pending', ketuaNim.toString()]);
   return { success: true, message: 'Tugas berhasil didelegasikan ke NIM ' + assignedNim };
 }
 
-/**
- * Get assigned tasks for a specific member
- */
 function getTasksForMember(nim) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Tasks');
   const data = sheet.getDataRange().getValues();
   const tasks = [];
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][4].toString() === nim.toString()) {
-      tasks.push({
-        taskId: data[i][0],
-        taskName: data[i][1],
-        category: data[i][2],
-        description: data[i][3],
-        status: data[i][5],
-        createdBy: data[i][6]
-      });
+      tasks.push({ taskId: data[i][0], taskName: data[i][1], category: data[i][2], description: data[i][3], status: data[i][5], createdBy: data[i][6] });
     }
   }
   return tasks;
 }
 
-/**
- * Get tasks created/delegated by the Ketua
- */
 function getTasksByKetua(ketuaNim) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Tasks');
   const data = sheet.getDataRange().getValues();
   const tasks = [];
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][6].toString() === ketuaNim.toString()) {
-      tasks.push({
-        taskId: data[i][0],
-        taskName: data[i][1],
-        category: data[i][2],
-        description: data[i][3],
-        assignedNim: data[i][4],
-        status: data[i][5]
-      });
+      tasks.push({ taskId: data[i][0], taskName: data[i][1], category: data[i][2], description: data[i][3], assignedNim: data[i][4], status: data[i][5] });
     }
   }
   return tasks;
 }
 
-/**
- * Complete a task, upload file to Google Drive and save to Logbooks sheet.
- * fileData must be an object with { base64: '...', mimeType: '...', name: '...' }
- */
 function completeTaskAndUpload(nim, taskId, workDesc, fileObj) {
   try {
     const ss = getSpreadsheet();
-    
-    // 1. Upload File/Photo to Google Drive Folder
-    let fileUrl = '';
-    let fileName = '';
-    
+    let fileUrl = '', fileName = '';
     const driveFolderId = PropertiesService.getScriptProperties().getProperty(PROP_DRIVE_FOLDER_ID);
-    
     if (fileObj && fileObj.base64 && fileObj.name) {
       let folder;
-      if (driveFolderId) {
-        folder = DriveApp.getFolderById(driveFolderId);
-      } else {
-        // Fallback: Create folder at My Drive root
+      if (driveFolderId) { folder = DriveApp.getFolderById(driveFolderId); }
+      else {
         const folders = DriveApp.getFoldersByName('UNY_Internship_Logbooks');
-        if (folders.hasNext()) {
-          folder = folders.next();
-        } else {
-          folder = DriveApp.createFolder('UNY_Internship_Logbooks');
-        }
+        folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('UNY_Internship_Logbooks');
       }
-      
       const fileBytes = Utilities.base64Decode(fileObj.base64);
       const blob = Utilities.newBlob(fileBytes, fileObj.mimeType, fileObj.name);
       const file = folder.createFile(blob);
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      fileUrl = file.getUrl();
-      fileName = fileObj.name;
+      fileUrl = file.getUrl(); fileName = fileObj.name;
     }
-    
-    // 2. Fetch specific Task Name and Category
     const taskSheet = ss.getSheetByName('Tasks');
     const taskData = taskSheet.getDataRange().getValues();
-    let taskName = 'Tugas Mandiri/Lain-lain';
-    let category = 'Admin';
-    let taskRowIndex = -1;
-    
+    let taskName = 'Tugas Mandiri/Lain-lain', category = 'Admin', taskRowIndex = -1;
     for (let i = 1; i < taskData.length; i++) {
-      if (taskData[i][0].toString() === taskId.toString()) {
-        taskName = taskData[i][1];
-        category = taskData[i][2];
-        taskRowIndex = i + 1;
-        break;
-      }
+      if (taskData[i][0].toString() === taskId.toString()) { taskName = taskData[i][1]; category = taskData[i][2]; taskRowIndex = i + 1; break; }
     }
-    
-    // 3. Mark Task as Completed in Tasks Sheet
-    if (taskRowIndex !== -1) {
-      taskSheet.getRange(taskRowIndex, 6).setValue('Completed');
-    }
-    
-    // 4. Save to Logbooks Sheet
+    if (taskRowIndex !== -1) taskSheet.getRange(taskRowIndex, 6).setValue('Completed');
     const logbookSheet = ss.getSheetByName('Logbooks');
     const logbookId = 'LOG-' + new Date().getTime();
     const timestamp = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
-    
-    logbookSheet.appendRow([
-      logbookId,
-      nim.toString(),
-      taskId,
-      taskName,
-      category,
-      timestamp,
-      workDesc,
-      fileUrl,
-      fileName,
-      '', // Nilai Akhir (graded by PIC later)
-      ''  // Notes
-    ]);
-    
+    logbookSheet.appendRow([logbookId, nim.toString(), taskId, taskName, category, timestamp, workDesc, fileUrl, fileName, '', '']);
     return { success: true, message: 'Logbook pekerjaan berhasil diunggah!' };
-  } catch (error) {
-    return { success: false, message: 'Error Server: ' + error.toString() };
-  }
+  } catch (error) { return { success: false, message: 'Error Server: ' + error.toString() }; }
 }
 
-/**
- * Get all completed logbooks for grading review (PIC View)
- */
 function getCompletedLogbooks() {
   const ss = getSpreadsheet();
-  const logbookSheet = ss.getSheetByName('Logbooks');
-  const logbookData = logbookSheet.getDataRange().getValues();
-  const userSheet = ss.getSheetByName('Users');
-  const userData = userSheet.getDataRange().getValues();
-  
-  // Make a User map for quick Lookup of Student Name and Email
+  const logbookData = ss.getSheetByName('Logbooks').getDataRange().getValues();
+  const userData = ss.getSheetByName('Users').getDataRange().getValues();
   const userMap = {};
-  for (let i = 1; i < userData.length; i++) {
-    userMap[userData[i][0].toString()] = {
-      name: userData[i][1],
-      email: userData[i][2]
-    };
-  }
-  
+  for (let i = 1; i < userData.length; i++) { userMap[userData[i][0].toString()] = { name: userData[i][1], email: userData[i][2] }; }
   const logbooks = [];
   for (let i = 1; i < logbookData.length; i++) {
     const nimStr = logbookData[i][1].toString();
-    const sName = userMap[nimStr] ? userMap[nimStr].name : 'Student';
-    const sEmail = userMap[nimStr] ? userMap[nimStr].email : '';
-    
-    logbooks.push({
-      logbookId: logbookData[i][0],
-      nim: nimStr,
-      studentName: sName,
-      studentEmail: sEmail,
-      taskId: logbookData[i][2],
-      taskName: logbookData[i][3],
-      category: logbookData[i][4],
-      timestamp: logbookData[i][5],
-      workDescription: logbookData[i][6],
-      fileUrl: logbookData[i][7],
-      fileName: logbookData[i][8],
-      grade: logbookData[i][9],
-      notes: logbookData[i][10]
-    });
+    const u = userMap[nimStr] || { name: 'Student', email: '' };
+    logbooks.push({ logbookId: logbookData[i][0], nim: nimStr, studentName: u.name, studentEmail: u.email, taskId: logbookData[i][2], taskName: logbookData[i][3], category: logbookData[i][4], timestamp: logbookData[i][5], workDescription: logbookData[i][6], fileUrl: logbookData[i][7], fileName: logbookData[i][8], grade: logbookData[i][9], notes: logbookData[i][10] });
   }
   return logbooks;
 }
 
-/**
- * Grade a completed logbook log (PIC Action)
- */
 function gradeLogbook(logbookId, grade, notes) {
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName('Logbooks');
   const data = sheet.getDataRange().getValues();
-  
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === logbookId.toString()) {
-      sheet.getRange(i + 1, 10).setValue(grade); // Column index 10 (J) is Grade
-      sheet.getRange(i + 1, 11).setValue(notes); // Column index 11 (K) is Notes
+      sheet.getRange(i + 1, 10).setValue(grade);
+      sheet.getRange(i + 1, 11).setValue(notes);
       return { success: true, message: 'Logbook ' + logbookId + ' berhasil dinilai!' };
     }
   }
@@ -521,271 +390,301 @@ function gradeLogbook(logbookId, grade, notes) {
 }
 
 /**
- * Core Automation Process (PIC Action):
- * 1. Mengisi semua {{TAG}} / <<TAG>> di Google Slides template → Export PDF Sertifikat
- * 2. Mengisi semua {{TAG}} / <<TAG>> di Google Docs template → Export PDF Portofolio  
- * 3. Menyimpan PDF ke Google Drive
- * 4. Mengirim PDF ke email mahasiswa secara otomatis
+ * ════════════════════════════════════════════════════════════════════════
+ * GENERATE SERTIFIKAT + PORTOFOLIO AKHIR (PDF Base64)
+ * — Menggunakan PORTFOLIO_TEMPLATE_ID (bukan logbook template!)
+ * — Data mahasiswa dikirim langsung dari React (tidak ambil dari Sheets)
+ * — Output: PDF Base64 bisa langsung di-download oleh browser
  *
- * TAG yang didukung di template Slides:
- *   {{NAMA}} / <<Nama>>      → Nama Mahasiswa
- *   {{NIM}}  / <<NIM>>       → Nomor Induk Mahasiswa
- *   {{NOMOR}}/ <<Nomor>>     → Nomor Surat Sertifikat
- *   {{PERIODE}}/<<Periode>>  → Lama magang (bulan)
- *   {{NILAI}} / <<Nilai>>    → Nilai numerik
- *   {{PREDIKAT}}/<<Predikat>>→ Predikat (BAIK, SANGAT BAIK, dll.)
- *   {{MULAI}} / <<Mulai>>    → Tanggal mulai (format Indonesia)
- *   {{SELESAI}}/<<Selesai>>  → Tanggal selesai (format Indonesia)
+ * TAG di template Slides Sertifikat:
+ *   {{NAMA}}, {{NIM}}, {{NOMOR}}, {{PERIODE}}, {{NILAI}}, {{PREDIKAT}}, {{MULAI}}, {{SELESAI}}, {{PERAN}}
  *
- * TAG yang didukung di template Docs:
- *   {{NAMA}}, {{NIM}}, {{NOMOR}}, {{PERIODE}}, {{NILAI}}, {{PREDIKAT}},
- *   {{MULAI}}, {{SELESAI}}, {{LogbookTable}} / <<LogbookTable>>
+ * TAG di template Docs Portofolio:
+ *   {{NAMA}}, {{NIM}}, {{NOMOR}}, {{PERIODE}}, {{NILAI}}, {{PREDIKAT}}, {{MULAI}}, {{SELESAI}},
+ *   {{LogbookTable}} / <<LogbookTable>> / {{LOGBOOK}}
+ * ════════════════════════════════════════════════════════════════════════
  */
-function generatePortfolioAndCertificate(studentNim, overallGrade) {
+function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, paramPortfolioId, paramSlideId) {
   try {
     const props = PropertiesService.getScriptProperties();
-    const driveFolderId = props.getProperty(PROP_DRIVE_FOLDER_ID);
-    const portfolioTemplateId = props.getProperty(PROP_PORTFOLIO_TEMPLATE_ID);
-    const slideTemplateId = props.getProperty(PROP_SLIDE_TEMPLATE_ID);
+    const slideTemplateId     = paramSlideId     || props.getProperty(PROP_SLIDE_TEMPLATE_ID);
+    const portfolioTemplateId = paramPortfolioId || props.getProperty(PROP_PORTFOLIO_TEMPLATE_ID);
     
-    if (!driveFolderId || !portfolioTemplateId || !slideTemplateId) {
-      return { 
-        success: false, 
-        message: 'Lengkapi Konfigurasi API Template (Drive Folder ID, Portfolio Template ID, Slide Template ID) di menu Pengaturan PIC terlebih dahulu sebelum mencetak berkas.' 
-      };
+    if (!slideTemplateId) {
+      return { success: false, message: 'Slide Template ID (Sertifikat) belum diisi di Pengaturan PIC!' };
+    }
+    
+    const studentName          = studentData.name           || '';
+    const studentNim           = studentData.nim            || '';
+    const studentEmail         = studentData.email          || '';
+    const studentRole          = studentData.role           || 'Anggota';
+    const studentPeriode       = studentData.periode        || 3;
+    const studentTanggalMulai  = studentData.tanggalMulai  || '';
+    const studentTanggalSelesai= studentData.tanggalSelesai|| '';
+    const studentNomorSurat    = studentData.nomorSurat     || '-';
+    const overallGrade         = studentData.overallGrade  || 0;
+    
+    if (!studentName) return { success: false, message: 'Data mahasiswa kosong atau tidak valid!' };
+    
+    const predikat         = getPredicate(overallGrade);
+    const tanggalMulaiID   = formatTanggalID(studentTanggalMulai)    || '-';
+    const tanggalSelesaiID = formatTanggalID(studentTanggalSelesai)  || '-';
+    
+    const replacements = [
+      ['{{NAMA}}',    studentName],      ['<<Nama>>',    studentName],
+      ['{{NIM}}',     studentNim],       ['<<NIM>>',     studentNim],
+      ['{{NOMOR}}',   studentNomorSurat],['<<Nomor>>',   studentNomorSurat],
+      ['{{PERIODE}}', studentPeriode.toString()],['<<Periode>>', studentPeriode.toString()],
+      ['{{NILAI}}',   overallGrade.toString()],  ['<<Nilai>>',   overallGrade.toString()],
+      ['{{PREDIKAT}}',predikat],         ['<<Predikat>>',predikat],
+      ['{{MULAI}}',   tanggalMulaiID],   ['<<Mulai>>',   tanggalMulaiID],
+      ['{{SELESAI}}', tanggalSelesaiID], ['<<Selesai>>', tanggalSelesaiID],
+      ['{{PERAN}}',   studentRole],      ['<<Peran>>',   studentRole],
+    ];
+    
+    const studentLogs  = logbooks || [];
+    const outputFolder = DriveApp.getRootFolder(); // file sementara, lalu dihapus
+    
+    // ── PART A: SERTIFIKAT — Google Slides ────────────────────────────────
+    const slideCopy = DriveApp.getFileById(slideTemplateId).makeCopy('Sertifikat_' + studentName, outputFolder);
+    const presentation = SlidesApp.openById(slideCopy.getId());
+    replacements.forEach(function(pair) { try { presentation.replaceAllText(pair[0], pair[1]); } catch(e) {} });
+    presentation.saveAndClose();
+    const certPdfBlob = slideCopy.getAs('application/pdf');
+    const certBase64  = Utilities.base64Encode(certPdfBlob.getBytes());
+    slideCopy.setTrashed(true);
+    
+    // ── PART B: PORTOFOLIO AKHIR — Google Docs ───────────────────────────
+    let portBase64 = null;
+    if (portfolioTemplateId) {
+      try {
+        const docCopy = DriveApp.getFileById(portfolioTemplateId).makeCopy('Portofolio_' + studentName, outputFolder);
+        const doc  = DocumentApp.openById(docCopy.getId());
+        const body = doc.getBody();
+        
+        replacements.forEach(function(pair) { try { body.replaceText(pair[0], pair[1] || ' '); } catch(e) {} });
+        try { body.replaceText('Nama: Afif', 'Nama: ' + studentName); } catch(e) {}
+        try { body.replaceText('NIS: 1',     'NIM: '  + studentNim);  } catch(e) {}
+        
+        // Cari marker tabel portofolio
+        let tableIndex = -1;
+        for (let i = 0; i < body.getNumChildren(); i++) {
+          const child = body.getChild(i);
+          if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+            const txt = child.asParagraph().getText();
+            if (txt.indexOf('{{LOGBOOK}}') !== -1 || txt.indexOf('<<LogbookTable>>') !== -1 || txt.indexOf('{{LogbookTable}}') !== -1) {
+              tableIndex = i;
+              child.asParagraph().setText(' ');
+              break;
+            }
+          }
+        }
+        
+        const tableData = [['Tanggal', 'Deskripsi Tugas', 'Catatan']];
+        if (studentLogs.length === 0) {
+          tableData.push([' ', '(Belum ada riwayat pekerjaan terselesaikan)', ' ']);
+        } else {
+          studentLogs.forEach(function(log) {
+            tableData.push([log.date || ' ', log.name || log.taskName || ' ', ' ']);
+          });
+        }
+        
+        let table;
+        if (tableIndex !== -1) { table = body.insertTable(tableIndex + 1, tableData); }
+        else { body.appendParagraph('\nDAFTAR RIWAYAT PEKERJAAN:'); table = body.appendTable(tableData); }
+        
+        const hStyle = {}; hStyle[DocumentApp.Attribute.BACKGROUND_COLOR]='#003366'; hStyle[DocumentApp.Attribute.FOREGROUND_COLOR]='#FFFFFF'; hStyle[DocumentApp.Attribute.BOLD]=true; hStyle[DocumentApp.Attribute.FONT_SIZE]=11;
+        const rStyle = {}; rStyle[DocumentApp.Attribute.BOLD]=false; rStyle[DocumentApp.Attribute.FONT_SIZE]=10;
+        for (let r = 0; r < tableData.length; r++) {
+          const row = table.getRow(r);
+          for (let c = 0; c < tableData[r].length; c++) {
+            const cell = row.getCell(c);
+            if (r === 0) { cell.setAttributes(hStyle); }
+            else { cell.setAttributes(rStyle); cell.setPaddingTop(5); cell.setPaddingBottom(5); }
+          }
+        }
+        
+        doc.saveAndClose();
+        portBase64 = Utilities.base64Encode(docCopy.getAs('application/pdf').getBytes());
+        docCopy.setTrashed(true);
+      } catch (docError) {
+        Logger.log('Portfolio generation error: ' + docError.toString());
+      }
+    }
+    
+    return { success: true, message: 'Sertifikat dan Portofolio PDF ' + studentName + ' berhasil dibuat!', certBase64: certBase64, portBase64: portBase64 };
+    
+  } catch (error) {
+    return { success: false, message: 'Gagal mencetak berkas: ' + error.toString() };
+  }
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════
+ * GENERATE TASK LOGBOOK — Versi Baru (dari modal "Gandakan Laporan")
+ * — Menggunakan DOC_TEMPLATE_ID (Template Logbook Harian)
+ * — Mengisi: {{NAMA}}, {{NIM}}, {{JUDUL}}, {{KATEGORI}}, {{DESKRIPSI}},
+ *            {{PEMBAHASAN}}, {{LANGKAH}}, {{KENDALA}}, {{KESIMPULAN}}
+ * — Menyisipkan tabel timeline kerja harian jika ada marker {{TimelineTable}}
+ * — Otomatis simpan ke sheet Logbooks & tandai tugas Completed
+ * ════════════════════════════════════════════════════════════════════════
+ */
+function generateTaskLogbook(studentNim, taskId, taskName, category, description, docReportTitle, docReportOverview, docReportSteps, docReportChallenges, docReportConclusion, timelineLogs) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const driveFolderId     = props.getProperty(PROP_DRIVE_FOLDER_ID);
+    const logbookTemplateId = props.getProperty(PROP_DOC_TEMPLATE_ID);
+    
+    if (!driveFolderId || !logbookTemplateId) {
+      return { success: false, message: 'Lengkapi Drive Folder ID dan Logbook Template ID di Pengaturan PIC.' };
     }
     
     const ss = getSpreadsheet();
-    
-    // ─── Ambil Data Lengkap Mahasiswa dari Sheet Users ───────────────────────
-    // Kolom: NIM(0) Name(1) Email(2) Password(3) Role(4) Periode(5) TanggalMulai(6) TanggalSelesai(7) NomorSurat(8)
-    const userSheet = ss.getSheetByName('Users');
-    const userData = userSheet.getDataRange().getValues();
-    let studentName = '';
-    let studentEmail = '';
-    let studentPeriode = 3;
-    let studentTanggalMulai = '';
-    let studentTanggalSelesai = '';
-    let studentNomorSurat = '';
-    
+    const userData = ss.getSheetByName('Users').getDataRange().getValues();
+    let studentName = 'Mahasiswa';
     for (let i = 1; i < userData.length; i++) {
-      if (userData[i][0].toString() === studentNim.toString()) {
-        studentName        = userData[i][1] || '';
-        studentEmail       = userData[i][2] || '';
-        studentPeriode     = userData[i][5] || 3;
-        studentTanggalMulai   = userData[i][6] ? userData[i][6].toString() : '';
-        studentTanggalSelesai = userData[i][7] ? userData[i][7].toString() : '';
-        studentNomorSurat  = userData[i][8] ? userData[i][8].toString() : '';
-        break;
-      }
-    }
-    
-    if (!studentName) {
-      return { success: false, message: 'Mahasiswa dengan NIM ' + studentNim + ' tidak ditemukan!' };
-    }
-    
-    // ─── Siapkan Nilai Substitusi ────────────────────────────────────────────
-    const predikat = getPredicate(overallGrade);
-    const tanggalMulaiID   = formatTanggalID(studentTanggalMulai)   || '-';
-    const tanggalSelesaiID = formatTanggalID(studentTanggalSelesai) || '-';
-    
-    // Peta semua pasangan TAG → Nilai (mendukung format {{TAG}} dan <<Tag>>)
-    const replacements = [
-      ['{{NAMA}}',    studentName],
-      ['<<Nama>>',    studentName],
-      ['{{NIM}}',     studentNim.toString()],
-      ['<<NIM>>',     studentNim.toString()],
-      ['{{NOMOR}}',   studentNomorSurat || '-'],
-      ['<<Nomor>>',   studentNomorSurat || '-'],
-      ['{{PERIODE}}', studentPeriode.toString()],
-      ['<<Periode>>', studentPeriode.toString()],
-      ['{{NILAI}}',   overallGrade.toString()],
-      ['<<Nilai>>',   overallGrade.toString()],
-      ['{{PREDIKAT}}', predikat],
-      ['<<Predikat>>', predikat],
-      ['{{MULAI}}',   tanggalMulaiID],
-      ['<<Mulai>>',   tanggalMulaiID],
-      ['{{SELESAI}}', tanggalSelesaiID],
-      ['<<Selesai>>', tanggalSelesaiID],
-    ];
-    
-    // ─── Ambil Logbook Mahasiswa ──────────────────────────────────────────────
-    const logbookSheet = ss.getSheetByName('Logbooks');
-    const logbookData = logbookSheet.getDataRange().getValues();
-    const studentLogs = [];
-    
-    for (let i = 1; i < logbookData.length; i++) {
-      if (logbookData[i][1].toString() === studentNim.toString()) {
-        studentLogs.push({
-          taskName: logbookData[i][3],
-          category: logbookData[i][4],
-          timestamp: logbookData[i][5],
-          description: logbookData[i][6],
-          fileUrl: logbookData[i][7]
-        });
-      }
+      if (userData[i][0].toString() === studentNim.toString()) { studentName = userData[i][1] || 'Mahasiswa'; break; }
     }
     
     const outputFolder = DriveApp.getFolderById(driveFolderId);
+    const docCopy = DriveApp.getFileById(logbookTemplateId).makeCopy('Logbook_' + taskName + '_' + studentName, outputFolder);
+    const doc  = DocumentApp.openById(docCopy.getId());
+    const body = doc.getBody();
     
-    // ════════════════════════════════════════════════════════════════════════
-    // PART A: GENERATE CERTIFICATE — Google Slides template
-    // Google Apps Script mengganti SEMUA {{TAG}} di semua slide, lalu export PDF
-    // ════════════════════════════════════════════════════════════════════════
-    const slideCopy   = DriveApp.getFileById(slideTemplateId).makeCopy('Sertifikat_' + studentName, outputFolder);
-    const slideCopyId = slideCopy.getId();
-    const presentation = SlidesApp.openById(slideCopyId);
-    
-    // replaceAllText() di level presentasi mengganti teks di SEMUA slide sekaligus
-    replacements.forEach(function(pair) {
-      presentation.replaceAllText(pair[0], pair[1]);
-    });
-    
-    presentation.saveAndClose();
-    
-    // Export Slides → PDF (re-fetch untuk mendapat versi tersimpan terbaru)
-    const certPdfBlob = DriveApp.getFileById(slideCopyId)
-      .getAs('application/pdf')
-      .setName('Sertifikat_Magang_UNY_' + studentName + '.pdf');
-    
-    // ════════════════════════════════════════════════════════════════════════
-    // PART B: GENERATE PORTFOLIO — Google Docs template
-    // ════════════════════════════════════════════════════════════════════════
-    const docCopy   = DriveApp.getFileById(portfolioTemplateId).makeCopy('Portofolio_' + studentName, outputFolder);
-    const docCopyId = docCopy.getId();
-    // Variable renamed from 'document' to 'portfolioDoc' to avoid shadowing GAS built-in
-    const portfolioDoc = DocumentApp.openById(docCopyId);
-    const body = portfolioDoc.getBody();
-    
-    // Ganti semua {{TAG}} dan <<Tag>> di body Docs
-    replacements.forEach(function(pair) {
-      body.replaceText(pair[0], pair[1]);
-    });
-    
-    // ─── Sisipkan Tabel Logbook pada marker {{LogbookTable}} / <<LogbookTable>> ─
-    let tableIndex = -1;
-    for (let i = 0; i < body.getNumChildren(); i++) {
-      let child = body.getChild(i);
-      if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
-        const txt = child.asParagraph().getText();
-        if (txt.indexOf('{{LogbookTable}}') !== -1 || txt.indexOf('<<LogbookTable>>') !== -1) {
-          tableIndex = i;
-          child.asParagraph().setText(''); // Hapus teks placeholder
-          break;
-        }
-      }
-    }
-    
-    // Prepare table headers
-    const tableData = [
-      ['No', 'Nama Tugas', 'Kategori', 'Tanggal', 'Deskripsi Hasil Pekerjaan', 'Tautan Bukti Dukung']
+    const replacements = [
+      ['{{NAMA}}',      studentName],       ['<<Nama>>',      studentName],
+      ['{{NIM}}',       studentNim.toString()],['<<NIM>>',    studentNim.toString()],
+      ['{{JUDUL}}',     docReportTitle || taskName],['<<Judul>>',docReportTitle || taskName],
+      ['{{KATEGORI}}',  category || '-'],   ['<<Kategori>>', category || '-'],
+      ['{{DESKRIPSI}}', description || '-'],['<<Deskripsi>>',description || '-'],
+      ['{{PEMBAHASAN}}',docReportOverview || '-'],['<<Pembahasan>>',docReportOverview || '-'],
+      ['{{LANGKAH}}',   docReportSteps || '-'],   ['<<Langkah>>',   docReportSteps || '-'],
+      ['{{KENDALA}}',   docReportChallenges || '-'],['<<Kendala>>',  docReportChallenges || '-'],
+      ['{{KESIMPULAN}}',docReportConclusion || '-'],['<<Kesimpulan>>',docReportConclusion || '-'],
+      // Tangani hardcode di template lama
+      ['Nama: Afif',   'Nama: ' + studentName],
+      ['NIS: 1',       'NIM: '  + studentNim.toString()],
     ];
     
-    studentLogs.forEach(function(item, idx) {
-      tableData.push([
-        (idx + 1).toString(),
-        item.taskName,
-        item.category,
-        item.timestamp ? item.timestamp.toString().substring(0, 10) : '-',
-        item.description,
-        item.fileUrl ? item.fileUrl : 'Tidak Ada File'
-      ]);
-    });
+    replacements.forEach(function(pair) { try { body.replaceText(pair[0], pair[1] || ' '); } catch(e) {} });
     
-    let table;
-    if (tableIndex !== -1) {
-      table = body.insertTable(tableIndex + 1, tableData);
-    } else {
-      // Append at end of document if no marker found
-      body.appendParagraph('\nREKAPITULASI LOGBOOK MAGANG:');
-      table = body.appendTable(tableData);
+    // Sisipkan tabel timeline jika ada marker
+    if (timelineLogs && timelineLogs.length > 0) {
+      let tableIndex = -1;
+      for (let i = 0; i < body.getNumChildren(); i++) {
+        const child = body.getChild(i);
+        if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+          const txt = child.asParagraph().getText();
+          if (txt.indexOf('{{TimelineTable}}') !== -1 || txt.indexOf('<<TimelineTable>>') !== -1 ||
+              txt.indexOf('{{LOGBOOK}}')       !== -1 || txt.indexOf('<<LogbookTable>>')  !== -1) {
+            tableIndex = i;
+            child.asParagraph().setText(' ');
+            break;
+          }
+        }
+      }
+      const tableData = [['Tanggal', 'Aktivitas Riil', 'Durasi']];
+      timelineLogs.forEach(function(log) { tableData.push([log.date || ' ', log.description || ' ', (log.hours || '') + ' Jam']); });
+      let table;
+      if (tableIndex !== -1) { table = body.insertTable(tableIndex + 1, tableData); }
+      else { body.appendParagraph('\nLOGBOOK KEGIATAN:'); table = body.appendTable(tableData); }
+      const hStyle = {}; hStyle[DocumentApp.Attribute.BACKGROUND_COLOR]='#003366'; hStyle[DocumentApp.Attribute.FOREGROUND_COLOR]='#FFFFFF'; hStyle[DocumentApp.Attribute.BOLD]=true;
+      for (let c = 0; c < tableData[0].length; c++) { table.getRow(0).getCell(c).setAttributes(hStyle); }
     }
     
-    // Style the generated table beautifully
-    const headerStyle = {};
-    headerStyle[DocumentApp.Attribute.BACKGROUND_COLOR] = '#003366';
-    headerStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#FFFFFF';
-    headerStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Calibri';
-    headerStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
-    headerStyle[DocumentApp.Attribute.BOLD] = true;
+    doc.saveAndClose();
+    docCopy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
     
-    const rowStyle = {};
-    rowStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Calibri';
-    rowStyle[DocumentApp.Attribute.FONT_SIZE] = 9;
-    rowStyle[DocumentApp.Attribute.BOLD] = false;
+    // Simpan ke sheet Logbooks
+    const logbookSheet = ss.getSheetByName('Logbooks');
+    const newLogbookId = 'LOG-' + new Date().getTime();
+    const timestamp    = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
+    logbookSheet.appendRow([newLogbookId, studentNim.toString(), taskId, taskName, category, timestamp, docReportOverview || description, docCopy.getUrl(), 'Logbook_' + taskName + '_' + studentName, '', '']);
     
-    // Apply styling to table
-    for (let r = 0; r < tableData.length; r++) {
-      let row = table.getRow(r);
-      for (let c = 0; c < tableData[r].length; c++) {
-        let cell = row.getCell(c);
-        if (r === 0) {
-          cell.setAttributes(headerStyle);
-        } else {
-          cell.setAttributes(rowStyle);
-          // Set cell text padding for a clean neat grid look
-          cell.setPaddingTop(4);
-          cell.setPaddingBottom(4);
+    // Tandai tugas selesai
+    const taskData = ss.getSheetByName('Tasks').getDataRange().getValues();
+    const taskSheet = ss.getSheetByName('Tasks');
+    for (let i = 1; i < taskData.length; i++) {
+      if (taskData[i][0].toString() === taskId.toString()) { taskSheet.getRange(i + 1, 6).setValue('Completed'); break; }
+    }
+    
+    return { success: true, message: 'GDoc Logbook berhasil digandakan!', fileUrl: docCopy.getUrl(), docId: docCopy.getId() };
+    
+  } catch (error) {
+    return { success: false, message: 'Gagal menggandakan GDoc Logbook: ' + error.toString() };
+  }
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════
+ * GENERATE LOGBOOK DOC — Versi Lama (dari tombol "Gandakan Template" di tabel tugas)
+ * Dipertahankan untuk kompatibilitas, menggunakan struktur data lama (studentData, taskData)
+ * ════════════════════════════════════════════════════════════════════════
+ */
+function generateLogbookDoc(studentData, taskData, paramDriveId, paramDocId) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const driveFolderId  = paramDriveId || props.getProperty(PROP_DRIVE_FOLDER_ID);
+    const logbookTemplId = paramDocId   || props.getProperty(PROP_DOC_TEMPLATE_ID);
+    
+    if (!driveFolderId || !logbookTemplId) {
+      return { success: false, message: 'Lengkapi Drive Folder ID dan Logbook Template ID di Pengaturan PIC.' };
+    }
+    
+    const studentName = studentData.name || ' ';
+    const studentNim  = studentData.nim  || ' ';
+    const studentRole = studentData.role || 'Anggota';
+    const taskName     = taskData.taskName  || ' ';
+    const taskCategory = taskData.category  || ' ';
+    const checklists   = taskData.points    || [];
+    const checkDates   = taskData.checkDates || [];
+    
+    const outputFolder = DriveApp.getFolderById(driveFolderId);
+    const docCopy = DriveApp.getFileById(logbookTemplId).makeCopy('Draf Laporan Hasil ' + taskName + ' - ' + studentName, outputFolder);
+    const doc  = DocumentApp.openById(docCopy.getId());
+    const body = doc.getBody();
+    docCopy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    
+    const replacements = [
+      ['{{JUDUL}}',    taskName],       ['{{KATEGORI}}', taskCategory],
+      ['{{NAMA}}',     studentName],    ['Nama: Afif',   'Nama: ' + studentName],
+      ['{{NIM}}',      studentNim],     ['NIS: 1',       'NIM: '  + studentNim],
+      ['{{PERAN}}',    studentRole],    ['<<Peran>>',    studentRole],
+    ];
+    replacements.forEach(function(pair) { try { body.replaceText(pair[0], pair[1] || ' '); } catch(e) {} });
+    
+    let tableIndex = -1;
+    for (let i = 0; i < body.getNumChildren(); i++) {
+      const child = body.getChild(i);
+      if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+        const txt = child.asParagraph().getText();
+        if (txt.indexOf('{{LOGBOOK}}') !== -1 || txt.indexOf('<<LOGBOOK>>') !== -1 || txt.indexOf('{{LogbookTable}}') !== -1 || txt.indexOf('<<LogbookTable>>') !== -1) {
+          tableIndex = i; child.asParagraph().setText(' '); break;
         }
       }
     }
     
-    portfolioDoc.saveAndClose();
+    const tableData = [['Tanggal', 'Deskripsi Tugas', 'Catatan']];
+    if (checklists.length === 0) { tableData.push([' ', '(Belum ada checklist capaian)', ' ']); }
+    else { checklists.forEach(function(point, idx) { tableData.push([(checkDates && checkDates[idx]) ? checkDates[idx].toString() : ' ', point.toString() || ' ', ' ']); }); }
     
-    // Export Portfolio to PDF — re-fetch file to get latest saved version
-    const portfolioPdfBlob = DriveApp.getFileById(docCopyId).getAs('application/pdf').setName('Portofolio_Magang_UNY_' + studentName + '.pdf');
+    let table;
+    if (tableIndex !== -1) { table = body.insertTable(tableIndex + 1, tableData); }
+    else { body.appendParagraph('\nLOGBOOK KEGIATAN:'); table = body.appendTable(tableData); }
     
-    // --- PART C: SEND EMAIL WITH PDF ATTACHMENTS ---
-    if (studentEmail) {
-      const emailSubject = '[E-Sertifikat & Portofolio Magang] Fakultas Vokasi UNY IT Network';
-      const emailBodyHTML = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-          <div style="background-color: #003366; padding: 25px; text-align: center;">
-            <h1 style="color: #FFD700; margin: 0; font-size: 24px; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">FAKULTAS VOKASI UNY</h1>
-            <p style="color: #ffffff; margin: 5px 0 0 0; font-size: 14px; letter-spacing: 1px;">DEPARTEMEN IT NETWORK & INFRASTRUKTUR</p>
-          </div>
-          <div style="padding: 30px; line-height: 1.6; color: #333333; background-color: #ffffff;">
-            <p style="margin-top: 0; font-size: 16px;">Yth. <b>${studentName}</b> (NIM. ${studentNim}),</p>
-            <p style="text-align: justify;">Selamat! Anda telah resmi menyelesaikan seluruh rangkaian program magang industri di Departemen IT Network Fakultas Vokasi Universitas Negeri Yogyakarta dengah hasil yang membanggakan.</p>
-            <p style="text-align: justify;">Dosen PIC Pembimbing Lapangan telah memverifikasi portofolio logbook harian Anda dan memberikan rekapitulasi penilaian akhir sebagai berikut:</p>
-            
-            <div style="background-color: #f7f9fc; border-left: 4px solid #003366; padding: 15px; margin: 20px 0; border-radius: 4px;">
-              <table style="width: 100%; font-size: 15px;">
-                <tr><td style="width: 40%; color: #666;">Nama Lengkap:</td><td><b>${studentName}</b></td></tr>
-                <tr><td style="color: #666;">Nomor Induk Mahasiswa:</td><td><b>${studentNim}</b></td></tr>
-                <tr><td style="color: #666;">Predikat Penilaian:</td><td><b style="color: #003366; font-size: 18px;">${overallGrade} (Sangat Baik / Lulus)</b></td></tr>
-              </table>
-            </div>
-            
-            <p style="text-align: justify;">Terlampir kami kirimkan dokumen e-sertifikat kelulusan magang resmi dan berkas portofolio magang harian Anda dalam format PDF pendukung karir Anda untuk diunduh.</p>
-            <p style="margin-bottom: 0;">Terima kasih atas dedikasi luar biasa Anda demi kemajuan infrastruktur IT Fakultas Vokasi UNY.</p>
-          </div>
-          <div style="background-color: #f1f3f5; padding: 15px 30px; font-color: #888888; font-size: 11px; text-align: center; border-top: 1px solid #e9ecef;">
-            Email ini dibuat secara otomatis oleh UNY Apps Script Integration System.<br>
-            © 2026 Fakultas Vokasi Universitas Negeri Yogyakarta. All Rights Reserved.
-          </div>
-        </div>
-      `;
-      
-      MailApp.sendEmail({
-        to: studentEmail,
-        subject: emailSubject,
-        htmlBody: emailBodyHTML,
-        attachments: [certPdfBlob, portfolioPdfBlob]
-      });
+    const hStyle = {}; hStyle[DocumentApp.Attribute.BACKGROUND_COLOR]='#003366'; hStyle[DocumentApp.Attribute.FOREGROUND_COLOR]='#FFFFFF'; hStyle[DocumentApp.Attribute.BOLD]=true; hStyle[DocumentApp.Attribute.FONT_SIZE]=11;
+    const rStyle = {}; rStyle[DocumentApp.Attribute.BOLD]=false; rStyle[DocumentApp.Attribute.FONT_SIZE]=10;
+    for (let r = 0; r < tableData.length; r++) {
+      const row = table.getRow(r);
+      for (let c = 0; c < tableData[r].length; c++) {
+        const cell = row.getCell(c);
+        if (r === 0) { cell.setAttributes(hStyle); } else { cell.setAttributes(rStyle); cell.setPaddingTop(5); cell.setPaddingBottom(5); }
+      }
     }
     
-    // Clean up temporary workspace copies to keep drive tidy (Optional but highly recommended)
-    // SlideCopy.setTrashed(true);
-    // DocCopy.setTrashed(true);
-    
-    return { 
-      success: true, 
-      message: 'Sertifikat dan Portofolio PDF ' + studentName + ' berhasil dibuat, distor ke Drive, dan dikirimkan ke Email ' + studentEmail + '!' 
-    };
-  } catch (error) {
-    return { success: false, message: 'Gagal mencetak & mengirim berkas: ' + error.toString() };
-  }
+    doc.saveAndClose();
+    return { success: true, docId: docCopy.getId(), docUrl: 'https://docs.google.com/document/d/' + docCopy.getId() + '/edit', message: 'Logbook berhasil di-generate!' };
+  } catch (error) { return { success: false, message: 'Gagal generate Laporan Doc: ' + error.toString() }; }
 }
 
 /**
@@ -794,14 +693,12 @@ function generatePortfolioAndCertificate(studentNim, overallGrade) {
 function saveConfiguration(driveId, logbookId, portfolioId, slideId) {
   try {
     const props = PropertiesService.getScriptProperties();
-    props.setProperty(PROP_DRIVE_FOLDER_ID, driveId);
-    props.setProperty(PROP_DOC_TEMPLATE_ID, logbookId);
+    props.setProperty(PROP_DRIVE_FOLDER_ID,      driveId);
+    props.setProperty(PROP_DOC_TEMPLATE_ID,      logbookId);
     props.setProperty(PROP_PORTFOLIO_TEMPLATE_ID, portfolioId);
-    props.setProperty(PROP_SLIDE_TEMPLATE_ID, slideId);
+    props.setProperty(PROP_SLIDE_TEMPLATE_ID,    slideId);
     return { success: true, message: 'Pengaturan Template Google API Berhasil Disimpan!' };
-  } catch (error) {
-    return { success: false, message: 'Gagal menyimpan: ' + error.toString() };
-  }
+  } catch (error) { return { success: false, message: 'Gagal menyimpan: ' + error.toString() }; }
 }
 
 /**
@@ -810,141 +707,9 @@ function saveConfiguration(driveId, logbookId, portfolioId, slideId) {
 function getConfiguration() {
   const props = PropertiesService.getScriptProperties();
   return {
-    driveFolderId: props.getProperty(PROP_DRIVE_FOLDER_ID) || '',
-    docTemplateId: props.getProperty(PROP_DOC_TEMPLATE_ID) || '',
+    driveFolderId:      props.getProperty(PROP_DRIVE_FOLDER_ID)       || '',
+    docTemplateId:      props.getProperty(PROP_DOC_TEMPLATE_ID)       || '',
     portfolioTemplateId: props.getProperty(PROP_PORTFOLIO_TEMPLATE_ID) || '',
-    slideTemplateId: props.getProperty(PROP_SLIDE_TEMPLATE_ID) || ''
+    slideTemplateId:    props.getProperty(PROP_SLIDE_TEMPLATE_ID)     || ''
   };
-}
-
-/**
- * Duplicates Logbook Template for a specific Task
- */
-function generateTaskLogbook(studentNim, taskId, taskName, category, description, docReportTitle, docReportOverview, docReportSteps, docReportChallenges, docReportConclusion, timelineLogs) {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const driveFolderId = props.getProperty(PROP_DRIVE_FOLDER_ID);
-    const logbookTemplateId = props.getProperty(PROP_DOC_TEMPLATE_ID);
-    
-    if (!driveFolderId || !logbookTemplateId) {
-      return { 
-        success: false, 
-        message: 'Lengkapi Konfigurasi API Template (Drive Folder ID, Logbook Template ID) di menu Pengaturan PIC terlebih dahulu.' 
-      };
-    }
-    
-    const ss = getSpreadsheet();
-    
-    // Ambil Data Lengkap Mahasiswa
-    const userSheet = ss.getSheetByName('Users');
-    const userData = userSheet.getDataRange().getValues();
-    let studentName = 'Mahasiswa';
-    
-    for (let i = 1; i < userData.length; i++) {
-      if (userData[i][0].toString() === studentNim.toString()) {
-        studentName = userData[i][1] || '';
-        break;
-      }
-    }
-    
-    const outputFolder = DriveApp.getFolderById(driveFolderId);
-    
-    // Copy Template Logbook
-    const docCopy = DriveApp.getFileById(logbookTemplateId).makeCopy('Logbook_' + taskName + '_' + studentName, outputFolder);
-    const docCopyId = docCopy.getId();
-    const logbookDoc = DocumentApp.openById(docCopyId);
-    const body = logbookDoc.getBody();
-    
-    const replacements = [
-      ['{{NAMA}}', studentName],
-      ['<<Nama>>', studentName],
-      ['{{NIM}}', studentNim.toString()],
-      ['<<NIM>>', studentNim.toString()],
-      ['{{JUDUL}}', docReportTitle || taskName],
-      ['<<Judul>>', docReportTitle || taskName],
-      ['{{KATEGORI}}', category || '-'],
-      ['<<Kategori>>', category || '-'],
-      ['{{DESKRIPSI}}', description || '-'],
-      ['<<Deskripsi>>', description || '-'],
-      ['{{PEMBAHASAN}}', docReportOverview || '-'],
-      ['<<Pembahasan>>', docReportOverview || '-'],
-      ['{{LANGKAH}}', docReportSteps || '-'],
-      ['<<Langkah>>', docReportSteps || '-'],
-      ['{{KENDALA}}', docReportChallenges || '-'],
-      ['<<Kendala>>', docReportChallenges || '-'],
-      ['{{KESIMPULAN}}', docReportConclusion || '-'],
-      ['<<Kesimpulan>>', docReportConclusion || '-']
-    ];
-    
-    replacements.forEach(function(pair) {
-      body.replaceText(pair[0], pair[1]);
-    });
-    
-    // Sisipkan Tabel Timeline jika ada marker {{TimelineTable}}
-    if (timelineLogs && timelineLogs.length > 0) {
-      let tableIndex = -1;
-      for (let i = 0; i < body.getNumChildren(); i++) {
-        let child = body.getChild(i);
-        if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
-          const txt = child.asParagraph().getText();
-          if (txt.indexOf('{{TimelineTable}}') !== -1 || txt.indexOf('<<TimelineTable>>') !== -1) {
-            tableIndex = i;
-            child.asParagraph().setText('');
-            break;
-          }
-        }
-      }
-      
-      const tableData = [['Tanggal', 'Aktivitas Riil', 'Durasi']];
-      timelineLogs.forEach(function(log) {
-        tableData.push([log.date || '', log.description || '', (log.hours || '') + ' Jam']);
-      });
-      
-      if (tableIndex !== -1) {
-        const table = body.insertTable(tableIndex + 1, tableData);
-        // Style Header
-        for (let c = 0; c < tableData[0].length; c++) {
-           let cell = table.getRow(0).getCell(c);
-           cell.setBackgroundColor('#003366');
-           cell.setForegroundColor('#FFFFFF');
-        }
-      }
-    }
-    
-    logbookDoc.saveAndClose();
-    docCopy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    
-    // Simpan ke Logbooks sheet otomatis
-    const logbookSheet = ss.getSheetByName('Logbooks');
-    const newLogbookId = 'LOG-' + new Date().getTime();
-    const timestamp = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
-    
-    logbookSheet.appendRow([
-      newLogbookId,
-      studentNim.toString(),
-      taskId,
-      taskName,
-      category,
-      timestamp,
-      docReportOverview || description,
-      docCopy.getUrl(),
-      'Logbook_' + taskName + '_' + studentName,
-      '',
-      ''
-    ]);
-    
-    // Mark Task as Completed in Tasks Sheet
-    const taskSheet = ss.getSheetByName('Tasks');
-    const taskData = taskSheet.getDataRange().getValues();
-    for (let i = 1; i < taskData.length; i++) {
-      if (taskData[i][0].toString() === taskId.toString()) {
-        taskSheet.getRange(i + 1, 6).setValue('Completed');
-        break;
-      }
-    }
-    
-    return { success: true, message: 'GDoc Logbook berhasil digandakan dan tersimpan di sistem!', fileUrl: docCopy.getUrl() };
-  } catch (error) {
-    return { success: false, message: 'Gagal menggandakan GDoc Logbook: ' + error.toString() };
-  }
 }
