@@ -16,7 +16,8 @@
 
 // Global Configurations / Property Keys
 const PROP_DRIVE_FOLDER_ID = 'DRIVE_FOLDER_ID';
-const PROP_DOC_TEMPLATE_ID = 'DOC_TEMPLATE_ID';
+const PROP_DOC_TEMPLATE_ID = 'DOC_TEMPLATE_ID'; // Logbook Template
+const PROP_PORTFOLIO_TEMPLATE_ID = 'PORTFOLIO_TEMPLATE_ID'; // Portfolio Template
 const PROP_SLIDE_TEMPLATE_ID = 'SLIDE_TEMPLATE_ID';
 
 /**
@@ -28,6 +29,68 @@ function doGet(e) {
     .setTitle('UNY IT Network Internship Portal')
     .setSandboxMode(HtmlService.SandboxMode.IFRAME)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, shrink-to-fit=no');
+}
+
+/**
+ * Handles POST requests from the React frontend
+ * Acts as an API router based on the 'action' field in the JSON body
+ */
+function doPost(e) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+  
+  try {
+    const body = JSON.parse(e.postData.contents);
+    const action = body.action;
+    const payload = body.payload || {};
+    
+    let result;
+    
+    switch (action) {
+      case 'generateTaskLogbook':
+        result = generateTaskLogbook(
+          payload.studentNim,
+          payload.taskId,
+          payload.taskName,
+          payload.category,
+          payload.description,
+          payload.docReportTitle,
+          payload.docReportOverview,
+          payload.docReportSteps,
+          payload.docReportChallenges,
+          payload.docReportConclusion,
+          payload.timelineLogs || []
+        );
+        break;
+      
+      case 'export_certificate':
+        result = generatePortfolioAndCertificate(
+          payload.studentData.nim,
+          payload.studentData.overallGrade
+        );
+        break;
+      
+      case 'generate_logbook_doc':
+        // Legacy handler kept for backward compatibility
+        result = { success: false, message: 'Gunakan action generateTaskLogbook sebagai ganti.' };
+        break;
+      
+      default:
+        result = { success: false, message: 'Action tidak dikenal: ' + action };
+    }
+    
+    return ContentService
+      .createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+      
+  } catch (error) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, message: 'Server Error: ' + error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 /**
@@ -482,13 +545,13 @@ function generatePortfolioAndCertificate(studentNim, overallGrade) {
   try {
     const props = PropertiesService.getScriptProperties();
     const driveFolderId = props.getProperty(PROP_DRIVE_FOLDER_ID);
-    const docTemplateId = props.getProperty(PROP_DOC_TEMPLATE_ID);
+    const portfolioTemplateId = props.getProperty(PROP_PORTFOLIO_TEMPLATE_ID);
     const slideTemplateId = props.getProperty(PROP_SLIDE_TEMPLATE_ID);
     
-    if (!driveFolderId || !docTemplateId || !slideTemplateId) {
+    if (!driveFolderId || !portfolioTemplateId || !slideTemplateId) {
       return { 
         success: false, 
-        message: 'Lengkapi Konfigurasi API Template (Drive Folder ID, Doc Template ID, Slide Template ID) di menu Pengaturan PIC terlebih dahulu sebelum mencetak berkas.' 
+        message: 'Lengkapi Konfigurasi API Template (Drive Folder ID, Portfolio Template ID, Slide Template ID) di menu Pengaturan PIC terlebih dahulu sebelum mencetak berkas.' 
       };
     }
     
@@ -588,7 +651,7 @@ function generatePortfolioAndCertificate(studentNim, overallGrade) {
     // ════════════════════════════════════════════════════════════════════════
     // PART B: GENERATE PORTFOLIO — Google Docs template
     // ════════════════════════════════════════════════════════════════════════
-    const docCopy   = DriveApp.getFileById(docTemplateId).makeCopy('Portofolio_' + studentName, outputFolder);
+    const docCopy   = DriveApp.getFileById(portfolioTemplateId).makeCopy('Portofolio_' + studentName, outputFolder);
     const docCopyId = docCopy.getId();
     // Variable renamed from 'document' to 'portfolioDoc' to avoid shadowing GAS built-in
     const portfolioDoc = DocumentApp.openById(docCopyId);
@@ -728,11 +791,12 @@ function generatePortfolioAndCertificate(studentNim, overallGrade) {
 /**
  * Save configuration properties for Templates
  */
-function saveConfiguration(driveId, docId, slideId) {
+function saveConfiguration(driveId, logbookId, portfolioId, slideId) {
   try {
     const props = PropertiesService.getScriptProperties();
     props.setProperty(PROP_DRIVE_FOLDER_ID, driveId);
-    props.setProperty(PROP_DOC_TEMPLATE_ID, docId);
+    props.setProperty(PROP_DOC_TEMPLATE_ID, logbookId);
+    props.setProperty(PROP_PORTFOLIO_TEMPLATE_ID, portfolioId);
     props.setProperty(PROP_SLIDE_TEMPLATE_ID, slideId);
     return { success: true, message: 'Pengaturan Template Google API Berhasil Disimpan!' };
   } catch (error) {
@@ -748,6 +812,139 @@ function getConfiguration() {
   return {
     driveFolderId: props.getProperty(PROP_DRIVE_FOLDER_ID) || '',
     docTemplateId: props.getProperty(PROP_DOC_TEMPLATE_ID) || '',
+    portfolioTemplateId: props.getProperty(PROP_PORTFOLIO_TEMPLATE_ID) || '',
     slideTemplateId: props.getProperty(PROP_SLIDE_TEMPLATE_ID) || ''
   };
+}
+
+/**
+ * Duplicates Logbook Template for a specific Task
+ */
+function generateTaskLogbook(studentNim, taskId, taskName, category, description, docReportTitle, docReportOverview, docReportSteps, docReportChallenges, docReportConclusion, timelineLogs) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const driveFolderId = props.getProperty(PROP_DRIVE_FOLDER_ID);
+    const logbookTemplateId = props.getProperty(PROP_DOC_TEMPLATE_ID);
+    
+    if (!driveFolderId || !logbookTemplateId) {
+      return { 
+        success: false, 
+        message: 'Lengkapi Konfigurasi API Template (Drive Folder ID, Logbook Template ID) di menu Pengaturan PIC terlebih dahulu.' 
+      };
+    }
+    
+    const ss = getSpreadsheet();
+    
+    // Ambil Data Lengkap Mahasiswa
+    const userSheet = ss.getSheetByName('Users');
+    const userData = userSheet.getDataRange().getValues();
+    let studentName = 'Mahasiswa';
+    
+    for (let i = 1; i < userData.length; i++) {
+      if (userData[i][0].toString() === studentNim.toString()) {
+        studentName = userData[i][1] || '';
+        break;
+      }
+    }
+    
+    const outputFolder = DriveApp.getFolderById(driveFolderId);
+    
+    // Copy Template Logbook
+    const docCopy = DriveApp.getFileById(logbookTemplateId).makeCopy('Logbook_' + taskName + '_' + studentName, outputFolder);
+    const docCopyId = docCopy.getId();
+    const logbookDoc = DocumentApp.openById(docCopyId);
+    const body = logbookDoc.getBody();
+    
+    const replacements = [
+      ['{{NAMA}}', studentName],
+      ['<<Nama>>', studentName],
+      ['{{NIM}}', studentNim.toString()],
+      ['<<NIM>>', studentNim.toString()],
+      ['{{JUDUL}}', docReportTitle || taskName],
+      ['<<Judul>>', docReportTitle || taskName],
+      ['{{KATEGORI}}', category || '-'],
+      ['<<Kategori>>', category || '-'],
+      ['{{DESKRIPSI}}', description || '-'],
+      ['<<Deskripsi>>', description || '-'],
+      ['{{PEMBAHASAN}}', docReportOverview || '-'],
+      ['<<Pembahasan>>', docReportOverview || '-'],
+      ['{{LANGKAH}}', docReportSteps || '-'],
+      ['<<Langkah>>', docReportSteps || '-'],
+      ['{{KENDALA}}', docReportChallenges || '-'],
+      ['<<Kendala>>', docReportChallenges || '-'],
+      ['{{KESIMPULAN}}', docReportConclusion || '-'],
+      ['<<Kesimpulan>>', docReportConclusion || '-']
+    ];
+    
+    replacements.forEach(function(pair) {
+      body.replaceText(pair[0], pair[1]);
+    });
+    
+    // Sisipkan Tabel Timeline jika ada marker {{TimelineTable}}
+    if (timelineLogs && timelineLogs.length > 0) {
+      let tableIndex = -1;
+      for (let i = 0; i < body.getNumChildren(); i++) {
+        let child = body.getChild(i);
+        if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+          const txt = child.asParagraph().getText();
+          if (txt.indexOf('{{TimelineTable}}') !== -1 || txt.indexOf('<<TimelineTable>>') !== -1) {
+            tableIndex = i;
+            child.asParagraph().setText('');
+            break;
+          }
+        }
+      }
+      
+      const tableData = [['Tanggal', 'Aktivitas Riil', 'Durasi']];
+      timelineLogs.forEach(function(log) {
+        tableData.push([log.date || '', log.description || '', (log.hours || '') + ' Jam']);
+      });
+      
+      if (tableIndex !== -1) {
+        const table = body.insertTable(tableIndex + 1, tableData);
+        // Style Header
+        for (let c = 0; c < tableData[0].length; c++) {
+           let cell = table.getRow(0).getCell(c);
+           cell.setBackgroundColor('#003366');
+           cell.setForegroundColor('#FFFFFF');
+        }
+      }
+    }
+    
+    logbookDoc.saveAndClose();
+    docCopy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // Simpan ke Logbooks sheet otomatis
+    const logbookSheet = ss.getSheetByName('Logbooks');
+    const newLogbookId = 'LOG-' + new Date().getTime();
+    const timestamp = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
+    
+    logbookSheet.appendRow([
+      newLogbookId,
+      studentNim.toString(),
+      taskId,
+      taskName,
+      category,
+      timestamp,
+      docReportOverview || description,
+      docCopy.getUrl(),
+      'Logbook_' + taskName + '_' + studentName,
+      '',
+      ''
+    ]);
+    
+    // Mark Task as Completed in Tasks Sheet
+    const taskSheet = ss.getSheetByName('Tasks');
+    const taskData = taskSheet.getDataRange().getValues();
+    for (let i = 1; i < taskData.length; i++) {
+      if (taskData[i][0].toString() === taskId.toString()) {
+        taskSheet.getRange(i + 1, 6).setValue('Completed');
+        break;
+      }
+    }
+    
+    return { success: true, message: 'GDoc Logbook berhasil digandakan dan tersimpan di sistem!', fileUrl: docCopy.getUrl() };
+  } catch (error) {
+    return { success: false, message: 'Gagal menggandakan GDoc Logbook: ' + error.toString() };
+  }
 }

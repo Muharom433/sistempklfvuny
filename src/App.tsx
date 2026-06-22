@@ -670,6 +670,7 @@ export default function App() {
   ]);
   const [driveIdInput, setDriveIdInput] = useState('1A2b3C_uny_drive_logbooks_root');
   const [docTemplateInput, setDocTemplateInput] = useState('1A3Zp7vV-c2_35I3zYy7nJ_4qB1W-0y1YvT-k1wQ0XQc');
+  const [portfolioTemplateInput, setPortfolioTemplateInput] = useState('');
   const [slideTemplateInput, setSlideTemplateInput] = useState('1xwOSVbBKbH7M4RPT1QNRAYNM-yvuS8f9JG8LDJigZPI');
 
   useEffect(() => {
@@ -739,6 +740,7 @@ export default function App() {
           
           let fetchedDrive = parsedProps.find((p: any) => p.propKey === 'DRIVE_FOLDER_ID')?.propValue;
           let fetchedDoc = parsedProps.find((p: any) => p.propKey === 'TEMPLATE_M_DOCS_ID')?.propValue;
+          let fetchedPortfolio = parsedProps.find((p: any) => p.propKey === 'TEMPLATE_PORTFOLIO_ID')?.propValue;
           let fetchedSlide = parsedProps.find((p: any) => p.propKey === 'TEMPLATE_M_SLIDES_ID')?.propValue;
 
           if (fetchedDoc === '1Doc_master_portfolio_template_uny') fetchedDoc = '1A3Zp7vV-c2_35I3zYy7nJ_4qB1W-0y1YvT-k1wQ0XQc';
@@ -746,6 +748,7 @@ export default function App() {
           
           setDriveIdInput(fetchedDrive || '');
           setDocTemplateInput(fetchedDoc || '');
+          setPortfolioTemplateInput(fetchedPortfolio || '');
           setSlideTemplateInput(fetchedSlide || '');
         }
       }
@@ -4062,6 +4065,7 @@ export default function App() {
                                         { propKey: 'SUPABASE_ANON_KEY', propValue: import.meta.env.VITE_SUPABASE_ANON_KEY || '', lastUpdated: new Date().toISOString() },
                                         { propKey: 'DRIVE_FOLDER_ID', propValue: driveIdInput, lastUpdated: new Date().toISOString() },
                                         { propKey: 'TEMPLATE_M_DOCS_ID', propValue: docTemplateInput, lastUpdated: new Date().toISOString() },
+                                        { propKey: 'TEMPLATE_PORTFOLIO_ID', propValue: portfolioTemplateInput, lastUpdated: new Date().toISOString() },
                                         { propKey: 'TEMPLATE_M_SLIDES_ID', propValue: slideTemplateInput, lastUpdated: new Date().toISOString() }
                                       ]);
                                       customAlert(`Sukses: Parameter Sistem API Google berhasil direkam ke Database Supabase secara Global!`, 'success');
@@ -5022,11 +5026,58 @@ reader.readAsDataURL(file);`}
                   Batal / Kembali
                 </button>
                 <button 
-                  type="button" 
-                  onClick={() => {}}
-                  className="px-6 py-2 text-xs bg-[#003a70] hover:bg-[#002244] text-white font-extrabold rounded-xl transition-all shadow flex items-center gap-1"
+                  type="button"
+                  disabled={isSimulatingCall}
+                  onClick={async () => {
+                    if (!selectedTaskToDuplicateDoc) return;
+                    const gasUrl = import.meta.env.VITE_GAS_WEB_APP_URL;
+                    if (!gasUrl) {
+                      customAlert('API backend Google Apps Script belum terhubung! Cek VITE_GAS_WEB_APP_URL di .env', 'error');
+                      return;
+                    }
+                    if (!docTemplateInput) {
+                      customAlert('ID Template Logbook (Google Docs) belum diisi di Pengaturan PIC!', 'error');
+                      return;
+                    }
+                    setIsSimulatingCall(true);
+                    try {
+                      const payload = {
+                        studentNim: activeUser?.nim || '',
+                        taskId: selectedTaskToDuplicateDoc.taskId,
+                        taskName: selectedTaskToDuplicateDoc.taskName,
+                        category: selectedTaskToDuplicateDoc.category || '',
+                        description: selectedTaskToDuplicateDoc.description || '',
+                        docReportTitle: docReportTitle,
+                        docReportOverview: docReportOverview,
+                        docReportSteps: docReportSteps,
+                        docReportChallenges: docReportChallenges,
+                        docReportConclusion: docReportConclusion,
+                        timelineLogs: selectedTaskToDuplicateDoc.timelineLogs || []
+                      };
+                      const res = await fetch(gasUrl, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'generateTaskLogbook', payload })
+                      });
+                      const data = await res.json();
+                      setIsSimulatingCall(false);
+                      if (data.success) {
+                        setTasks(tasks.map(t => t.taskId === selectedTaskToDuplicateDoc.taskId
+                          ? { ...t, status: 'Completed', googleDocUrl: data.fileUrl }
+                          : t
+                        ));
+                        setSelectedTaskToDuplicateDoc(null);
+                        customAlert(`GDoc Logbook "${selectedTaskToDuplicateDoc.taskName}" berhasil dibuat! Kategori: ${selectedTaskToDuplicateDoc.category}\n\n${data.fileUrl}`, 'success', 'Logbook Berhasil Dibuat');
+                      } else {
+                        throw new Error(data.message);
+                      }
+                    } catch (err: any) {
+                      setIsSimulatingCall(false);
+                      customAlert('Gagal membuat GDoc Logbook: ' + err.message, 'error');
+                    }
+                  }}
+                  className="px-6 py-2 text-xs bg-[#003a70] hover:bg-[#002244] text-white font-extrabold rounded-xl transition-all shadow flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  ✓ Gandakan Laporan & Kirim Logbook
+                  {isSimulatingCall ? '⏳ Memproses...' : '✓ Gandakan Laporan & Kirim Logbook'}
                 </button>
               </div>
             </div>
@@ -5442,7 +5493,7 @@ reader.readAsDataURL(file);`}
                         },
                         logbooks: printDocument.logs,
                         driveId: driveIdInput || import.meta.env.VITE_DRIVE_FOLDER_ID || '',
-                        docId: docTemplateInput || import.meta.env.VITE_TEMPLATE_M_DOCS_ID || '',
+                        portfolioId: portfolioTemplateInput || import.meta.env.VITE_TEMPLATE_PORTFOLIO_ID || '',
                         slideId: slideTemplateInput || import.meta.env.VITE_TEMPLATE_M_SLIDES_ID || ''
                       };
 
