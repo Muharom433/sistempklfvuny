@@ -922,6 +922,7 @@ export default function App() {
       wordDesc: string; 
       file: string; 
       date: string;
+      grade?: string;
       workType?: string;
       googleDocUrl?: string;
       googleDocTitle?: string;
@@ -1818,6 +1819,7 @@ export default function App() {
           wordDesc: l.workDescription,
           file: l.fileUrl,
           date: l.timestamp.split(' ')[0],
+          grade: l.grade,
           workType: l.workType || 'Individu',
           googleDocUrl: l.googleDocUrl || `https://docs.google.com/document/d/1Doc_report_sim_${l.logbookId}/edit`,
           googleDocTitle: l.googleDocTitle || `Laporan Sim_Doc_${l.logbookId}`
