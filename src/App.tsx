@@ -383,8 +383,11 @@ export default function App() {
   const [copiedGs, setCopiedGs] = useState(false);
   const [copiedHtml, setCopiedHtml] = useState(false);
 
-  // --- SIMULATOR DATABASE STATE (with LocalStorage fallbacks) ---
+  // --- SIMULATOR DATABASE STATE (with LocalStorage fallbacks when Supabase not configured) ---
+  const hasSupabase = !!import.meta.env.VITE_SUPABASE_URL;
+  
   const [users, setUsers] = useState<User[]>(() => {
+    if (hasSupabase) return []; // Will be loaded from Supabase
     const saved = localStorage.getItem('uny_sim_users');
     let initialUsers: User[] = [
       { nim: '19600101', name: 'Dr. Eng. Ir. Rian, M.T. (Dosen PIC)', email: 'pic.itnetwork@uny.ac.id', role: 'PIC', password: 'password', periode: 12, tanggalMulai: '2026-01-01', tanggalSelesai: '2026-12-31' },
@@ -429,6 +432,7 @@ export default function App() {
   });
 
   const [masterTasks, setMasterTasks] = useState<MasterTask[]>(() => {
+    if (hasSupabase) return []; // Will be loaded from Supabase
     const saved = localStorage.getItem('uny_sim_master_tasks');
     if (saved) return JSON.parse(saved);
     return [
@@ -520,6 +524,7 @@ export default function App() {
   });
 
   const [tasks, setTasks] = useState<Task[]>(() => {
+    if (hasSupabase) return []; // Will be loaded from Supabase
     const saved = localStorage.getItem('uny_sim_tasks');
     if (saved) return JSON.parse(saved);
     return [
@@ -587,6 +592,7 @@ export default function App() {
   });
 
   const [logbooks, setLogbooks] = useState<Logbook[]>(() => {
+    if (hasSupabase) return []; // Will be loaded from Supabase
     const saved = localStorage.getItem('uny_sim_logbooks');
     if (saved) return JSON.parse(saved);
     return [
@@ -632,21 +638,21 @@ export default function App() {
     };
   });
 
-  // Keep state sync with LocalStorage
+  // Keep state sync with LocalStorage (only when Supabase is NOT configured)
   useEffect(() => {
-    localStorage.setItem('uny_sim_users', JSON.stringify(users));
+    if (!hasSupabase) localStorage.setItem('uny_sim_users', JSON.stringify(users));
   }, [users]);
   useEffect(() => {
-    localStorage.setItem('uny_sim_master_tasks', JSON.stringify(masterTasks));
+    if (!hasSupabase) localStorage.setItem('uny_sim_master_tasks', JSON.stringify(masterTasks));
   }, [masterTasks]);
   useEffect(() => {
-    localStorage.setItem('uny_sim_tasks', JSON.stringify(tasks));
+    if (!hasSupabase) localStorage.setItem('uny_sim_tasks', JSON.stringify(tasks));
   }, [tasks]);
   useEffect(() => {
-    localStorage.setItem('uny_sim_logbooks', JSON.stringify(logbooks));
+    if (!hasSupabase) localStorage.setItem('uny_sim_logbooks', JSON.stringify(logbooks));
   }, [logbooks]);
   useEffect(() => {
-    localStorage.setItem('uny_sim_jobdesks', JSON.stringify(jobdesks));
+    if (!hasSupabase) localStorage.setItem('uny_sim_jobdesks', JSON.stringify(jobdesks));
   }, [jobdesks]);
 
   // Category management state
@@ -688,11 +694,19 @@ export default function App() {
   const [slideTemplateInput, setSlideTemplateInput] = useState('1xwOSVbBKbH7M4RPT1QNRAYNM-yvuS8f9JG8LDJigZPI');
 
   useEffect(() => {
+    // Clear any stale localStorage data if Supabase is configured (Supabase is source of truth)
+    if (hasSupabase) {
+      localStorage.removeItem('uny_sim_users');
+      localStorage.removeItem('uny_sim_master_tasks');
+      localStorage.removeItem('uny_sim_tasks');
+      localStorage.removeItem('uny_sim_logbooks');
+      localStorage.removeItem('uny_sim_jobdesks');
+    }
+    
     // Initial Pull from Relational Tables
     db.fetchAll().then(data => {
       if(data) {
-        if(data.users.length) {
-          let updatedUsers = data.users as User[];
+        let updatedUsers = data.users as User[];
           if (data.nomorSuratData) {
             const nomData = typeof data.nomorSuratData === 'string' ? JSON.parse(data.nomorSuratData) : data.nomorSuratData;
             updatedUsers = updatedUsers.map(u => ({
@@ -700,11 +714,10 @@ export default function App() {
               nomorSurat: nomData[u.nim] || u.nomorSurat || ''
             }));
           }
-          setUsers(updatedUsers);
-        }
-        if(data.masterTasks.length) setMasterTasks(data.masterTasks as MasterTask[]);
+        setUsers(updatedUsers);
+        setMasterTasks(data.masterTasks as MasterTask[]);
         
-        if(data.tasks.length) {
+        if (data.tasks.length || data.masterTasks.length) {
           const mTasks = data.masterTasks as MasterTask[];
           const repairedTasks = (data.tasks as Task[]).map(t => {
             const master = mTasks.find(m => m.id === t.masterTaskId || (t.taskName || '').toLowerCase().trim() === (m.title || '').toLowerCase().trim());
@@ -744,10 +757,14 @@ export default function App() {
             return t;
           });
           setTasks(repairedTasks);
+        } else {
+          setTasks(data.tasks as Task[]);
         }
-        if(data.logbooks.length) setLogbooks(data.logbooks as Logbook[]);
-        if(Object.keys(data.jobdesks).length) setJobdesks(data.jobdesks);
-        if(data.categories.length) setCategories(data.categories);
+        
+        setLogbooks(data.logbooks as Logbook[]);
+        setJobdesks(data.jobdesks);
+        setCategories(data.categories);
+        
         if(data.properties) {
           const parsedProps = typeof data.properties === 'string' ? JSON.parse(data.properties) : data.properties;
           setPropertiesData(parsedProps);
@@ -1111,6 +1128,10 @@ export default function App() {
     }
 
     triggerCallSimulation(`Menyinkronkan data pengguna ${newName} ke Google Sheets...`, () => {
+      if (oldNim !== newNim) {
+        db.runMutation('users', 'delete', null, { column: 'nim', value: oldNim }).catch(() => {});
+      }
+      
       // 1. Update in the users list
       const updatedUsers = users.map(u => {
         if (u.nim === oldNim) {
