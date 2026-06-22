@@ -466,41 +466,126 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
         try { body.replaceText('Nama: Afif', 'Nama: ' + studentName); } catch(e) {}
         try { body.replaceText('NIS: 1',     'NIM: '  + studentNim);  } catch(e) {}
         
-        // Cari marker tabel portofolio
-        let tableIndex = -1;
-        for (let i = 0; i < body.getNumChildren(); i++) {
-          const child = body.getChild(i);
-          if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
-            const txt = child.asParagraph().getText();
-            if (txt.indexOf('{{LOGBOOK}}') !== -1 || txt.indexOf('<<LogbookTable>>') !== -1 || txt.indexOf('{{LogbookTable}}') !== -1) {
-              tableIndex = i;
-              child.asParagraph().setText(' ');
+        // --- 1. GENERATE PIE CHART ---
+        if (studentLogs && studentLogs.length > 0) {
+          const categoryCounts = {};
+          studentLogs.forEach(function(log) {
+            const cat = log.category || 'Lain-lain';
+            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+          });
+          
+          let dataBuilder = Charts.newDataTable()
+            .addColumn(Charts.ColumnType.STRING, 'Kategori')
+            .addColumn(Charts.ColumnType.NUMBER, 'Jumlah');
+          
+          for (const cat in categoryCounts) {
+            dataBuilder.addRow([cat, categoryCounts[cat]]);
+          }
+          
+          const chart = Charts.newPieChart()
+            .setDataTable(dataBuilder.build())
+            .setDimensions(500, 300)
+            .set3D()
+            .build();
+            
+          const chartBlob = chart.getAs('image/png');
+          
+          const piechartElement = body.findText('{{PIECHART}}');
+          if (piechartElement) {
+            const el = piechartElement.getElement();
+            el.getParent().asParagraph().insertInlineImage(0, chartBlob);
+            el.asText().setText('');
+          }
+        } else {
+          try { body.replaceText('{{PIECHART}}', '(Belum ada data)'); } catch(e) {}
+        }
+        
+        // --- 2. GENERATE TABLE & QR CODES ---
+        const tables = body.getTables();
+        let targetTable = null;
+        let templateRowIndex = -1;
+        
+        // Cari tabel yang punya marker {{JUDUL}}
+        for (let i = 0; i < tables.length; i++) {
+          const t = tables[i];
+          for (let r = 0; r < t.getNumRows(); r++) {
+            const row = t.getRow(r);
+            if (row.getText().indexOf('{{JUDUL}}') !== -1) {
+              targetTable = t;
+              templateRowIndex = r;
               break;
             }
           }
+          if (targetTable) break;
         }
         
-        const tableData = [['Tanggal', 'Deskripsi Tugas', 'Catatan']];
-        if (studentLogs.length === 0) {
-          tableData.push([' ', '(Belum ada riwayat pekerjaan terselesaikan)', ' ']);
+        if (targetTable && templateRowIndex !== -1) {
+          const templateRow = targetTable.getRow(templateRowIndex);
+          
+          if (studentLogs.length === 0) {
+            templateRow.getCell(0).setText('(Belum ada riwayat pekerjaan)');
+            templateRow.getCell(1).setText('-');
+            templateRow.getCell(2).setText('-');
+          } else {
+            studentLogs.forEach(function(log) {
+              const newRow = targetTable.appendTableRow(templateRow.copy());
+              try { newRow.replaceText('{{JUDUL}}', log.name || log.taskName || ' '); } catch(e) {}
+              try { newRow.replaceText('{{NILAI}}', (log.grade || '-').toString()); } catch(e) {}
+              
+              const qrElement = newRow.findText('{{QR}}');
+              if (qrElement) {
+                const linkStr = log.googleDocUrl || log.file || '';
+                const par = qrElement.getElement().getParent();
+                if (linkStr) {
+                  try {
+                    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' + encodeURIComponent(linkStr);
+                    const qrBlob = UrlFetchApp.fetch(qrUrl).getBlob();
+                    qrElement.getElement().asText().setText('');
+                    if (par.getType() === DocumentApp.ElementType.PARAGRAPH) {
+                      par.asParagraph().insertInlineImage(0, qrBlob);
+                    }
+                  } catch(e) {
+                    qrElement.getElement().asText().setText(linkStr);
+                  }
+                } else {
+                  qrElement.getElement().asText().setText('-');
+                }
+              }
+            });
+            targetTable.removeRow(templateRowIndex);
+          }
         } else {
-          studentLogs.forEach(function(log) {
-            tableData.push([log.date || ' ', log.name || log.taskName || ' ', ' ']);
-          });
-        }
-        
-        let table;
-        if (tableIndex !== -1) { table = body.insertTable(tableIndex + 1, tableData); }
-        else { body.appendParagraph('\nDAFTAR RIWAYAT PEKERJAAN:'); table = body.appendTable(tableData); }
-        
-        const hStyle = {}; hStyle[DocumentApp.Attribute.BACKGROUND_COLOR]='#003366'; hStyle[DocumentApp.Attribute.FOREGROUND_COLOR]='#FFFFFF'; hStyle[DocumentApp.Attribute.BOLD]=true; hStyle[DocumentApp.Attribute.FONT_SIZE]=11;
-        const rStyle = {}; rStyle[DocumentApp.Attribute.BOLD]=false; rStyle[DocumentApp.Attribute.FONT_SIZE]=10;
-        for (let r = 0; r < tableData.length; r++) {
-          const row = table.getRow(r);
-          for (let c = 0; c < tableData[r].length; c++) {
-            const cell = row.getCell(c);
-            if (r === 0) { cell.setAttributes(hStyle); }
-            else { cell.setAttributes(rStyle); cell.setPaddingTop(5); cell.setPaddingBottom(5); }
+          // Fallback jika tidak menemukan tabel dengan {{JUDUL}}, buat tabel baru (Backward Compatibility)
+          let tableIndex = -1;
+          for (let i = 0; i < body.getNumChildren(); i++) {
+            const child = body.getChild(i);
+            if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+              const txt = child.asParagraph().getText();
+              if (txt.indexOf('{{LOGBOOK}}') !== -1 || txt.indexOf('<<LogbookTable>>') !== -1 || txt.indexOf('{{LogbookTable}}') !== -1) {
+                tableIndex = i; child.asParagraph().setText(' '); break;
+              }
+            }
+          }
+          
+          const tableData = [['Judul Tugas', 'Nilai', 'Link G-Doc (QR)']];
+          if (studentLogs.length === 0) {
+            tableData.push(['(Belum ada riwayat pekerjaan)', '-', '-']);
+          } else {
+            studentLogs.forEach(function(log) { tableData.push([log.name || log.taskName || ' ', (log.grade || '-').toString(), log.googleDocUrl || log.file || '-']); });
+          }
+          
+          let table;
+          if (tableIndex !== -1) { table = body.insertTable(tableIndex + 1, tableData); }
+          else { body.appendParagraph('\nDAFTAR RIWAYAT PEKERJAAN:'); table = body.appendTable(tableData); }
+          
+          const hStyle = {}; hStyle[DocumentApp.Attribute.BACKGROUND_COLOR]='#003366'; hStyle[DocumentApp.Attribute.FOREGROUND_COLOR]='#FFFFFF'; hStyle[DocumentApp.Attribute.BOLD]=true;
+          const rStyle = {}; rStyle[DocumentApp.Attribute.BOLD]=false;
+          for (let r = 0; r < table.getNumRows(); r++) {
+            const row = table.getRow(r);
+            for (let c = 0; c < row.getNumCells(); c++) {
+              const cell = row.getCell(c);
+              if (r === 0) { cell.setAttributes(hStyle); } else { cell.setAttributes(rStyle); cell.setPaddingTop(5); cell.setPaddingBottom(5); }
+            }
           }
         }
         

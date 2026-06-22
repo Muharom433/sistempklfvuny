@@ -4033,11 +4033,11 @@ export default function App() {
                             </div>
                             <div>
                                <label className="block text-[10px] uppercase font-extrabold text-[#003a70] mb-0.5">ID Template Portofolio Akhir (Google Docs)</label>
-                               <span className="text-[9px] text-slate-400 block mb-1.5 leading-normal">Template dokumen Portofolio Rekapitulasi Akhir yang digunakan saat cetak PDF Portofolio. <strong className="text-orange-600">Harus dipisahkan dari template Logbook!</strong></span>
+                               <span className="text-[9px] text-slate-400 block mb-1.5 leading-normal">Template dokumen Portofolio Rekapitulasi Akhir yang digunakan saat cetak PDF Portofolio. Harus dipisahkan dari template Logbook!</span>
                                <div className="flex gap-2">
                                  <input 
                                    type="text" 
-                                   className="flex-1 text-xs font-mono px-3.5 py-2 border border-orange-300 rounded-lg outline-none text-slate-800 bg-orange-50/30 focus:bg-white focus:border-orange-500"
+                                   className="flex-1 text-xs font-mono px-3.5 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 bg-slate-50/50 focus:bg-white focus:border-[#003a70]"
                                    placeholder="Masukkan ID Google Docs template Portofolio..."
                                    value={portfolioTemplateInput}
                                    onChange={(e) => setPortfolioTemplateInput(e.target.value)}
@@ -4051,10 +4051,10 @@ export default function App() {
                                        : `https://docs.google.com/document/d/${portfolioTemplateInput}/edit`;
                                      window.open(url, '_blank');
                                    }}
-                                   className="px-3 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-xs font-semibold transition-all border border-orange-200 flex items-center justify-center gap-1 shrink-0"
+                                   className="px-3 py-2 bg-slate-100 hover:bg-[#003a70]/10 text-[#003a70] hover:text-[#002244] rounded-lg text-xs font-semibold transition-all border border-slate-200 flex items-center justify-center gap-1 shrink-0"
                                    title="Lihat/Edit Template Portofolio"
                                  >
-                                   <ExternalLink className="w-3.5 h-3.5" /> Lihat
+                                   <ExternalLink className="w-3.5 h-3.5" /> Modifikasi
                                  </button>
                                </div>
                             </div>
