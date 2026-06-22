@@ -2102,7 +2102,7 @@ export default function App() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="absolute inset-0 bg-[#001529]/95 text-white flex flex-col items-center justify-center gap-4 z-50 text-center px-6"
+                      className="fixed inset-0 bg-[#001529]/95 text-white flex flex-col items-center justify-center gap-4 z-[100] text-center px-6"
                     >
                       <div className="w-12 h-12 rounded-full border-4 border-amber-400 border-t-transparent animate-spin" />
                       <div className="text-sm font-mono mt-2 text-amber-300">{simulationMsg}</div>
@@ -5450,13 +5450,14 @@ reader.readAsDataURL(file);`}
                         <tr className="bg-[#003a70] text-white">
                           <th className="p-2">No</th>
                           <th className="p-2">Aktivitas Kerja</th>
+                          <th className="p-2 text-center">Nilai</th>
                           <th className="p-2 text-center">QR Akses Google Doc</th>
                         </tr>
                       </thead>
                       <tbody>
                         {printDocument.logs.length === 0 ? (
                           <tr>
-                            <td colSpan={3} className="py-4 text-center text-slate-400 italic">Belum ada portofolio dinilai lengkap.</td>
+                            <td colSpan={4} className="py-4 text-center text-slate-400 italic">Belum ada portofolio dinilai lengkap.</td>
                           </tr>
                         ) : (
                           printDocument.logs.map((l, i) => {
@@ -5472,6 +5473,7 @@ reader.readAsDataURL(file);`}
                                     <span className="text-[8px] bg-purple-50 text-purple-700 px-1 rounded font-bold">{l.workType || 'Individu'}</span>
                                   </div>
                                 </td>
+                                <td className="p-2 text-center font-extrabold text-[#003a70] text-xs">{l.grade || '-'}</td>
                                 <td className="p-2 text-center flex flex-col items-center justify-center">
                                   <a href={docUrl} target="_blank" rel="noreferrer" title="Klik untuk membuka Google Doc" className="block p-0.5 border border-slate-200 rounded hover:border-[#003a70] transition-colors bg-white">
                                     <img 
@@ -5510,7 +5512,7 @@ reader.readAsDataURL(file);`}
                 <button 
                   type="button"
                   onClick={() => {
-                    customAlert(`Aksi berhasil disimulasikan: Berkas Sertifikat.pdf dan Portofolio.pdf telah dikirim ke alamat email ${printDocument.email}`, 'success', 'Simulasi Kirim Email');
+                    customAlert(`Aksi berhasil disimulasikan: Berkas Sertifikat.pdf dan Portofolio (Desain Estetik) telah dikirim ke alamat email ${printDocument.email}`, 'success', 'Simulasi Kirim Email');
                   }}
                   className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md border border-sky-400"
                 >
