@@ -654,7 +654,21 @@ export default function App() {
   const [newCategoryName, setNewCategoryName] = useState('');
 
   // --- SIMULATOR RUNTIME STATE ---
-  const [activeUser, setActiveUser] = useState<User | null>(null);
+  const [activeUser, setActiveUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('activeUser');
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e) {}
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (activeUser) {
+      localStorage.setItem('activeUser', JSON.stringify(activeUser));
+    } else {
+      localStorage.removeItem('activeUser');
+    }
+  }, [activeUser]);
 
   // --- SUPABASE AUTO SYNC (REAL RELATIONAL TABLES) ---
   const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -1806,14 +1820,22 @@ export default function App() {
     });
   };
 
-  const triggerPDFGenerationSimulation = (studentNim: string, gradeStr: string) => {
+  const triggerPDFGenerationSimulation = (studentNim: string) => {
     const student = users.find(u => u.nim === studentNim);
     if (!student) return;
 
     triggerCallSimulation("Memproses integrasi Google Suite: Menyalin template Sertifikat Slides, menyusun tabel Portofolio Docs, dan mengirimkan lampiran PDF ke email...", () => {
-      const logs = logbooks
-        .filter(l => l.nim === studentNim && l.grade !== '')
-        .map(l => ({
+      const studentLogsForPrint = logbooks.filter(l => l.nim === studentNim && l.grade !== '');
+      
+      let sum = 0;
+      let count = 0;
+      studentLogsForPrint.forEach(l => {
+         const val = parseFloat(l.grade || '0');
+         if (!isNaN(val)) { sum += val; count++; }
+      });
+      const calcGradeStr = count > 0 ? (sum / count).toFixed(1).replace(/\.0$/, '') : '0';
+
+      const logs = studentLogsForPrint.map(l => ({
           name: l.taskName,
           category: l.category,
           wordDesc: l.workDescription,
@@ -1828,7 +1850,7 @@ export default function App() {
       setPrintDocument({
         studentName: student.name,
         studentNim: student.nim,
-        overallGrade: gradeStr,
+        overallGrade: calcGradeStr,
         email: student.email,
         certId: 'cert_pdf_' + student.nim,
         portfolioId: 'portfolio_pdf_' + student.nim,
@@ -3125,7 +3147,7 @@ export default function App() {
                                       <td className="py-3 text-right">
                                         <div className="flex items-center justify-end gap-1.5">
                                           <button 
-                                            onClick={() => triggerPDFGenerationSimulation(log.nim, log.grade || '88')}
+                                            onClick={() => triggerPDFGenerationSimulation(log.nim)}
                                             className="px-2.5 py-1 bg-[#003a70] hover:bg-[#002244] rounded-md text-white font-bold text-[10px] tracking-wide transition-all"
                                             title="Cetak PDF Sertifikat/Rekap"
                                           >
