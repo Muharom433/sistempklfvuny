@@ -5601,7 +5601,21 @@ reader.readAsDataURL(file);`}
                 </button>
                 <button 
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    const originalDisplay = document.getElementById('root')?.style.display;
+                    if(document.getElementById('root')) document.getElementById('root')!.style.display = 'none';
+                    
+                    const printDiv = document.createElement('div');
+                    printDiv.id = 'print-section';
+                    printDiv.className = 'w-full max-w-[1056px] mx-auto p-8';
+                    printDiv.innerHTML = document.getElementById('doc-print-container')?.outerHTML || '';
+                    document.body.appendChild(printDiv);
+                    
+                    window.print();
+                    
+                    document.body.removeChild(printDiv);
+                    if(document.getElementById('root')) document.getElementById('root')!.style.display = originalDisplay || '';
+                  }}
                   className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ml-1"
                   title="Cetak tampilan estetik ini langsung jadi PDF!"
                 >

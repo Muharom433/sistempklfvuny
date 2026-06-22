@@ -7,21 +7,10 @@
 }
 
 @media print {
-  body * {
-    visibility: hidden;
-  }
-  #doc-print-container, #doc-print-container * {
-    visibility: visible;
-  }
-  #doc-print-container {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
+  body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    background-color: white !important;
   }
   .no-print {
     display: none !important;
