@@ -5211,7 +5211,7 @@ reader.readAsDataURL(file);`}
           {/* Print CSS removed — Export PDF now uses a dedicated popup window */}
           
           {/* PRINT-ONLY HTML VERSION (CERTIFICATE & PORTFOLIO) */}
-          <div id="doc-print-container" className="hidden print:block w-full max-w-[1056px] mx-auto text-slate-900 font-sans">
+          <div className="hidden w-full max-w-[1056px] mx-auto text-slate-900 font-sans">
              {/* PAGE 1: CERTIFICATE — hidden, content rendered via popup Export PDF */}
              <div className="print-page w-full" style={{ aspectRatio: '16/9', border: '16px double rgba(180,120,0,0.3)', padding: '3rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#fffdf5', pageBreakAfter: 'always' }}>
                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -5354,7 +5354,7 @@ reader.readAsDataURL(file);`}
               </div>
 
               {/* Comprehensive Portfolio (Docs table list) */}
-              <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow flex flex-col justify-between min-h-[500px]">
+              <div id="doc-print-container" className="bg-white border border-slate-200 p-6 rounded-2xl shadow flex flex-col justify-between min-h-[500px]">
                 <div>
                   <div className="text-center font-bold text-xs uppercase border-b pb-2 mb-4 leading-normal text-slate-800">
                     PORTOFOLIO REKAPITULASI PROGRAM MAGANG <br />
@@ -5597,7 +5597,16 @@ reader.readAsDataURL(file);`}
                   className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-sky-950 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md"
                 >
                   <Download className="w-4 h-4" />
-                   Export PDF
+                   Export PDF (Google Docs)
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ml-1"
+                  title="Cetak tampilan estetik ini langsung jadi PDF!"
+                >
+                  <Download className="w-4 h-4" />
+                   Unduh Desain Estetik (PDF)
                 </button>
               </div>
             </div>
