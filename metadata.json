@@ -1,0 +1,6 @@
+{
+  "name": "UNY Apps Script Portal",
+  "description": "An interactive development environment, installer, and simulator for the Google Apps Script Web App powering the UNY Vocational Faculty IT Internship program.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal Magang IT Network - Fakultas Vokasi UNY</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fonts - Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet font">
+  <!-- Styles -->
+  <style>
+    :root {
+      --uny-blue: #003366;
+      --uny-gold: #FFD700;
+      --uny-dark-blue: #002244;
+      --light-gray: #F8F9FA;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #F3F5F7;
+      color: #333;
+    }
+    
+    .navbar {
+      background-color: var(--uny-blue) !important;
+      border-bottom: 4px solid var(--uny-gold);
+    }
+    
+    .navbar-brand {
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    
+    .btn-primary {
+      background-color: var(--uny-blue);
+      border-color: var(--uny-blue);
+    }
+    
+    .btn-primary:hover, .btn-primary:focus {
+      background-color: var(--uny-dark-blue);
+      border-color: var(--uny-dark-blue);
+    }
+    
+    .btn-outline-primary {
+      color: var(--uny-blue);
+      border-color: var(--uny-blue);
+    }
+    
+    .btn-outline-primary:hover {
+      background-color: var(--uny-blue);
+      color: #FFF;
+    }
+    
+    .text-uny-blue {
+      color: var(--uny-blue);
+    }
+    
+    .badge-jaringan {
+      background-color: #0d6efd;
+    }
+    
+    .badge-website {
+      background-color: #198754;
+    }
+    
+    .badge-admin {
+      background-color: #6c757d;
+    }
+    
+    .card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    
+    .card-header {
+      background-color: #FFF;
+      border-bottom: 1px solid #ECEFF1;
+      font-weight: 600;
+    }
+    
+    .hero-banner {
+      background: linear-gradient(135deg, var(--uny-blue) 0%, var(--uny-dark-blue) 100%);
+      color: white;
+      padding: 30px 20px;
+      border-radius: 16px;
+      margin-bottom: 25px;
+      border-bottom: 6px solid var(--uny-gold);
+      position: relative;
+    }
+    
+    .role-badge {
+      font-size: 0.8rem;
+      padding: 6px 12px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    
+    .role-pic { background-color: #DC3545; color: #fff; }
+    .role-ketua { background-color: #FFC107; color: #212529; }
+    .role-anggota { background-color: #198754; color: #fff; }
+    .role-sekretaris { background-color: #0D6EFD; color: #fff; }
+    .role-koor { background-color: #6F42C1; color: #fff; }
+    
+    /* Loading Overlay */
+    #loadingOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.85);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .drag-area {
+      border: 2px dashed #B0BEC5;
+      border-radius: 8px;
+      padding: 25px;
+      text-align: center;
+      background: #ECEFF1;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .drag-area.active {
+      border-color: var(--uny-blue);
+      background: #E3F2FD;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading Spinner Overlay -->
+  <div id="loadingOverlay">
+    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <div class="mt-3 fw-semibold text-secondary" id="loadingText">Menghubungkan ke server UNY...</div>
+  </div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <span class="me-2 text-warning">FV─UNY</span>
+        <span class="fs-6 fw-normal d-none d-sm-inline border-start ps-2 border-secondary">Portal Magang IT Network</span>
+      </a>
+      <div id="userInfoPanel" class="ms-auto d-flex align-items-center text-white d-none">
+        <span class="me-3 d-none d-md-inline" id="navUserIdentity">Nama Pengguna</span>
+        <span class="badge me-3" id="navUserRole">Anggota</span>
+        <button class="btn btn-sm btn-outline-warning" onclick="logout()">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="container my-4">
+
+    <!-- HERO / PROFIL BAR -->
+    <div id="heroSection" class="hero-banner d-none">
+      <div class="row align-items-center">
+        <div class="col-md-8">
+          <h2 class="fw-bold mb-1" id="welcomeUser">Selamat Datang, Nama Mahasiswa!</h2>
+          <p class="mb-0" id="welcomeSub">Departemen Jaringan komputer & Infrastruktur Vokasi UNY</p>
+        </div>
+        <div class="col-md-4 text-md-end mt-3 mt-md-0">
+          <div class="text-white-50 small mb-1">NIM Anda: <span class="text-white fw-bold" id="userNimDisplay">-</span></div>
+          <div class="text-white-50 small">Sesi Hubungan: <span class="badge bg-warning text-dark">Live Database</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============== VIEW 1: AUTHENTICATION (LOGIN & DAFTAR) =============== -->
+    <div id="authView" class="row justify-content-center my-5">
+      <div class="col-md-5">
+        <div class="card p-4">
+          <!-- UNY Vokasi Brand Shield -->
+          <div class="text-center mb-4">
+            <h4 class="fw-bold text-uny-blue mb-0">FV UNY IT NETWORK</h4>
+            <small class="text-muted text-uppercase tracking-wider">Sistem Informasi Manajemen Magang</small>
+          </div>
+          
+          <!-- Tab Navigation inside Login Box -->
+          <ul class="nav nav-pills nav-justified mb-4" id="pills-tab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-login" data-bs-toggle="pill" data-bs-target="#panel-login" type="button" role="tab">Masuk</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-register" data-bs-toggle="pill" data-bs-target="#panel-register" type="button" role="tab">Daftar Anggota</button>
+            </li>
+          </ul>
+          
+          <div class="tab-content" id="pills-tabContent">
+            <!-- Login Panel -->
+            <div class="tab-pane fade show active" id="panel-login" role="tabpanel">
+              <form id="formLogin" onsubmit="handleLogin(event)">
+                <div class="mb-3">
+                  <label for="loginNim" class="form-label">Nomor Induk Mahasiswa (NIM) / NIP</label>
+                  <input type="text" class="form-control" id="loginNim" required placeholder="Contoh: 2153214001 atau 19600101">
+                </div>
+                <div class="mb-3">
+                  <label for="loginPassword" class="form-label">Kata Sandi</label>
+                  <input type="password" class="form-control" id="loginPassword" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary w-full py-2 w-100 fw-semibold">Buka Dashboard</button>
+              </form>
+            </div>
+            
+            <!-- Register Panel -->
+            <div class="tab-pane fade" id="panel-register" role="tabpanel">
+              <form id="formRegister" onsubmit="handleRegister(event)">
+                <div class="mb-3">
+                  <label for="regNim" class="form-label">NIM (Nomor Induk Mahasiswa)</label>
+                  <input type="text" class="form-control" id="regNim" required placeholder="Masukkan NIM Resmi UNY">
+                </div>
+                <div class="mb-3">
+                  <label for="regName" class="form-label">Nama Lengkap</label>
+                  <input type="text" class="form-control" id="regName" required placeholder="Masukkan Nama Sesuai KTM">
+                </div>
+                <div class="mb-3">
+                  <label for="regEmail" class="form-label">Email SINKAD / Gmail Aktif</label>
+                  <input type="email" class="form-control" id="regEmail" required placeholder="mahasiswa@student.uny.ac.id">
+                </div>
+                <div class="mb-3">
+                  <label for="regPassword" class="form-label">Kata Sandi Baru</label>
+                  <input type="password" class="form-control" id="regPassword" required placeholder="Minimal 6 karakter">
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">Daftar Sekarang</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Setup Database Hint if First Run -->
+        <div class="text-center mt-3">
+          <button class="btn btn-sm btn-link text-secondary" onclick="runDatabaseSetup()">Setup Initial Database & Mock Jobdesks</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============== VIEW 1: ANGGOTA / MEMBER WORKSPACE =============== -->
+    <div id="anggotaView" class="d-none">
+      <div class="row">
+        <!-- Sidebar: Jobdesk PIC & Progress Grid -->
+        <div class="col-lg-4 mb-4">
+          <div class="card p-3 mb-4 h-100">
+            <h5 class="fw-bold border-bottom pb-2 text-uny-blue">Tangung Jawab Peran Anda</h5>
+            <div class="p-3 bg-light rounded border-start border-4 border-info">
+              <span class="badge bg-info text-dark mb-2" id="memberRoleBadge">ANGGOTA</span>
+              <p class="small text-muted mb-0" style="white-space: pre-line;" id="memberJobdeskBox">
+                Memuat deskripsi tugas pokok dari dosen PIC...
+              </p>
+            </div>
+            <div class="mt-4">
+              <h6 class="fw-bold small text-uppercase text-secondary">Alur Kerja Harian</h6>
+              <ul class="list-unstyled small">
+                <li class="mb-2">✓ Selesaikan penugasan aktif dari Ketua Mandat</li>
+                <li class="mb-2">✓ Lakukan pemotretan / unggahan berkas bukti dukung</li>
+                <li class="mb-2">✓ Klik selesaikan dan isi deskripsi logbook lengkap</li>
+                <li class="mb-2">✓ Pantau rekap sertifikat setelah diverifikasi PIC</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Content Area: Assigned Tasks -->
+        <div class="col-lg-8">
+          <div class="card p-3 h-100">
+            <h5 class="fw-bold border-bottom pb-2 d-flex justify-content-between align-items-center">
+              <span>Penugasan Aktif Anda</span>
+              <span class="badge bg-secondary text-white fs-6" id="memberActiveTasksCount">0</span>
+            </h5>
+            
+            <div id="memberTasksList" class="row">
+              <!-- Dynamically populated tasks -->
+              <div class="col-12 text-center py-5">
+                <span class="text-muted">Tidak ada tugas aktif yang sedang didelegasikan oleh ketua saat ini.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============== VIEW 2: KETUA PANEL (DELEGASI & PENUGASAN) =============== -->
+    <div id="ketuaView" class="d-none">
+      <div class="row">
+        <!-- Task Creation Form Section -->
+        <div class="col-lg-5 mb-4">
+          <div class="card p-3">
+            <h5 class="fw-bold border-bottom pb-2 text-uny-blue">Delegasikan Penugasan Baru</h5>
+            <form id="formDelegateTask" onsubmit="handleCreateTask(event)">
+              <div class="mb-3">
+                <label for="taskName" class="form-label">Judul Aktivitas / Tugas</label>
+                <input type="text" class="form-control" id="taskName" required placeholder="Contoh: Perbaikan Switch Lantai 2 Lab Vokasi">
+              </div>
+              <div class="mb-3">
+                <label for="taskCategory" class="form-label">Kategori Pekerjaan</label>
+                <select class="form-select" id="taskCategory" required>
+                  <option value="Jaringan">Jaringan (Routing, Cabling, Switch)</option>
+                  <option value="Website">Website (Frontend, Database, Admin Vokasi)</option>
+                  <option value="Admin">Admin (Surat Menyurat, Absensi, Inventaris)</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="taskAssignedNim" class="form-label">Delegasikan Ke (Mahasiswa)</label>
+                <select class="form-select" id="taskAssignedNim" required>
+                  <option value="">-- Pilih Mahasiswa Aktif --</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="taskDescription" class="form-label">Instruksi & Detail Pekerjaan</label>
+                <textarea class="form-control" id="taskDescription" rows="3" required placeholder="Tulis rincian task, perkakas yang dibutuhkan, atau target penyelesaian..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary w-100 fw-semibold">Delegasikan Tugas</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Delegated Tasks Status Section -->
+        <div class="col-lg-7">
+          <div class="card p-3 h-100">
+            <h5 class="fw-bold border-bottom pb-2">Status Distribusi Penugasan</h5>
+            
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Tugas</th>
+                    <th>Mahasiswa (NIM)</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="delegatedTasksTableBody">
+                  <tr>
+                    <td colspan="3" class="text-center py-4 text-muted">Belum ada tugas yang Anda distribusikan harian.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============== VIEW 3: PIC / DOSEN WORKSPACE =============== -->
+    <div id="picView" class="d-none">
+      <!-- Tabs for PIC Actions -->
+      <ul class="nav nav-tabs mb-4" id="picTabs" role="tablist">
+        <li class="nav-item">
+          <button class="nav-link active fw-semibold" id="tab-pic-grading" data-bs-toggle="tab" data-bs-target="#pic-grading" type="button">Penilaian & Cetak Berkas</button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link fw-semibold" id="tab-pic-roles" data-bs-toggle="tab" data-bs-target="#pic-roles" type="button">Manajemen Peran & NIM</button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link fw-semibold" id="tab-pic-jobdesc" data-bs-toggle="tab" data-bs-target="#pic-jobdesc" type="button">Pengaturan Jobdesk Peran</button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link fw-semibold" id="tab-pic-config" data-bs-toggle="tab" data-bs-target="#pic-config" type="button">Konfigurasi Template API</button>
+        </li>
+      </ul>
+
+      <div class="tab-content" id="picTabsContent">
+        <!-- TAB 1: GRADING & EXPORT PROCESS -->
+        <div class="tab-pane fade show active" id="pic-grading">
+          <div class="card p-3">
+            <h5 class="fw-bold border-bottom pb-2 mb-3">Daftar Logbook Selesai (Butuh Validasi & Nilai)</h5>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle text-nowrap">
+                <thead>
+                  <tr>
+                    <th>Mahasiswa (NIM)</th>
+                    <th>Aktivitas Kerja</th>
+                    <th>Bukti File</th>
+                    <th>Nilai Akhir</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="completedLogbooksTableBody">
+                  <tr>
+                    <td colspan="5" class="text-center py-4 text-muted">Belum ada logbook anggota yang selesai dikerjakan untuk dinilai.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: ROLES MANAGEMENT -->
+        <div class="tab-pane fade" id="pic-roles">
+          <div class="card p-3">
+            <h5 class="fw-bold border-bottom pb-2 mb-3">Kelola Hak Akses & Peran Mahasiswa Vokasi</h5>
+            <div class="table-responsive">
+              <table class="table table-striped align-middle">
+                <thead>
+                  <tr>
+                    <th>NIM</th>
+                    <th>Nama Pengguna</th>
+                    <th>Email</th>
+                    <th>Peran Aktif</th>
+                    <th>Ubah Peran</th>
+                  </tr>
+                </thead>
+                <tbody id="usersRolesTableBody">
+                  <!-- Auto populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: JOBDESK CONFIGURATION -->
+        <div class="tab-pane fade" id="pic-jobdesc">
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              <div class="list-group" id="jobdeskRoleList">
+                <button type="button" class="list-group-item list-group-item-action active" onclick="loadJobdeskToEditor('Anggota')">Anggota</button>
+                <button type="button" class="list-group-item list-group-item-action" onclick="loadJobdeskToEditor('Ketua')">Ketua</button>
+                <button type="button" class="list-group-item list-group-item-action" onclick="loadJobdeskToEditor('Sekretaris')">Sekretaris</button>
+                <button type="button" class="list-group-item list-group-item-action" onclick="loadJobdeskToEditor('Koordinator Ruangan')">Koordinator Ruangan</button>
+                <button type="button" class="list-group-item list-group-item-action" onclick="loadJobdeskToEditor('Koordinator Alat')">Koordinator Alat</button>
+                <button type="button" class="list-group-item list-group-item-action" onclick="loadJobdeskToEditor('Tim Support')">Tim Support</button>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="card p-3">
+                <h5 class="fw-bold text-uny-blue mb-1">Standardisasi Penugasan Peran: <span id="editorActiveRole">Anggota</span></h5>
+                <p class="text-muted small mb-3">Setiap mahasiswa yang memegang peran ini akan langsung melihat rincian tanggung jawab berikut pada dashboard depan mereka.</p>
+                <div class="mb-3">
+                  <label for="jobdeskTextArea" class="form-label font-monospace">Deskripsi Tugas Pokok (Pisahkan dengan enter/baris baru)</label>
+                  <textarea class="form-control" id="jobdeskTextArea" rows="8"></textarea>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="handleSaveJobdesk()">Simpan Standar Jobdesk</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: API TEMPLATES CONFIGURATION -->
+        <div class="tab-pane fade" id="pic-config">
+          <div class="row">
+            <div class="col-md-8">
+              <div class="card p-3">
+                <h5 class="fw-bold text-uny-blue border-bottom pb-2">Konfigurasi Pengenal API Google Suite</h5>
+                <form id="formApiConfig" onsubmit="handleSaveConfig(event)">
+                  <div class="mb-3">
+                    <label for="configDriveFolderId" class="form-label">ID Folder Penyimpanan Bukti Dukung (Google Drive)</label>
+                    <input type="text" class="form-control" id="configDriveFolderId" required placeholder="Contoh: 1a2b3c4d5e6f7G...">
+                    <div class="form-text small">Folder tempat menyimpan unggahan bukti dukung file mahasiswa.</div>
+                  </div>
+                  <div class="mb-3">
+                    <label for="configDocTemplateId" class="form-label">ID Template Portofolio (Google Docs)</label>
+                    <input type="text" class="form-control" id="configDocTemplateId" required placeholder="Contoh: 1H9I_bkaVomO...">
+                    <div class="form-text small">Template Docs yang memiliki penanda tag <code>&lt;&lt;Nama&gt;&gt;</code>, <code>&lt;&lt;NIM&gt;&gt;</code>, <code>&lt;&lt;Nilai Akhir&gt;&gt;</code>, dan tabel <code>&lt;&lt;LogbookTable&gt;&gt;</code>.</div>
+                  </div>
+                  <div class="mb-3">
+                    <label for="configSlideTemplateId" class="form-label">ID Template E-Sertifikat (Google Slides)</label>
+                    <input type="text" class="form-control" id="configSlideTemplateId" required placeholder="Contoh: 1p_R_EshD17...">
+                    <div class="form-text small">Template Slides sertifikat satu halaman dengan penanda tag <code>&lt;&lt;Nama&gt;&gt;</code> dan <code>&lt;&lt;Nilai&gt;&gt;</code>.</div>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Simpan Master Konfigurasi</button>
+                </form>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card p-3 bg-light text-secondary">
+                <h6 class="fw-bold text-dark">Informasi Bantuan Integrasi</h6>
+                <p class="small text-justify">Aplikasi ini secara dinamis menghubungkan database Google Sheet Anda dengan Workspace. Pastikan IDs tersebut diambil dari parameter URL berkas Google Suite Anda secara teliti.</p>
+                <div class="p-2 border rounded font-monospace bg-white text-dark small" style="word-break: break-all;">
+                  Format: https://docs.google.com/presentation/d/<strong class="bg-warning">ID_TEMPLATE</strong>/edit
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- End main container -->
+
+  <!-- =============== MODAL SECTION =============== -->
+  
+  <!-- Member Complete Task Dialog MODAL -->
+  <div class="modal fade" id="modalCompleteTask" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="formCompleteTask" onsubmit="handleCompleteTaskSubmit(event)">
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold" id="completeTaskTitle">Selesaikan Tugas Mandat</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="completeTaskId">
+            
+            <div class="mb-3">
+              <label class="form-label fw-bold">Instruksi Pokok</label>
+              <p class="small text-muted p-2 bg-light border-start border-3 border-primary" id="completeTaskDesc">Instruksi tugas...</p>
+            </div>
+            
+            <div class="mb-3">
+              <label for="completeWorkDesc" class="form-label fw-bold">Deskripsi Pekerjaan Hasil Anda</label>
+              <textarea class="form-control" id="completeWorkDesc" rows="4" required placeholder="Uraikan perbaikan yang telah sukses dilakukan, spesifikasi kabel, port, IP address, atau baris script yang berhasil di-deploy..."></textarea>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label fw-bold">Unggah Bukti Dukung (Bukti Foto/Berkas PDF)</label>
+              <div class="drag-area" id="dragUploadArea" onclick="triggerFileInput()">
+                <div class="text-secondary small mb-2" id="dragAreaLabel">Klik atau Seret Berkas di Sini</div>
+                <input type="file" id="fileUploadInput" class="d-none" onchange="processFileSelection(this.files)">
+                <span class="badge bg-secondary" id="selectedFileName">Belum ada berkas terpilih</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+            <button type="submit" class="btn btn-primary">Kirim Laporan Logbook</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIC Grading & Feedback MODAL -->
+  <div class="modal fade" id="modalGrading" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="formGrading" onsubmit="handleGradingSubmit(event)">
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold">Beri Penilaian Pekerjaan</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="gradingLogbookId">
+            <div class="mb-3">
+              <label class="form-label fw-bold">Nama Aktivitas Kerja</label>
+              <div class="p-2 border bg-light rounded text-muted small" id="gradingActivityTitle">-</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">Uraian Mahasiswa</label>
+              <div class="p-2 border bg-light rounded text-muted small" id="gradingActivityDesc">-</div>
+            </div>
+            <div class="mb-3 text-center" id="gradingFileBox">
+              <a href="#" target="_blank" class="btn btn-sm btn-outline-info" id="gradingFileAnchor">Tinjau File Bukti Dukung</a>
+            </div>
+            <hr>
+            <div class="mb-3">
+              <label for="gradingValue" class="form-label fw-bold">Input Nilai</label>
+              <input type="number" class="form-control" id="gradingValue" min="0" max="100" required placeholder="Contoh: 88">
+            </div>
+            <div class="mb-3">
+              <label for="gradingNotes" class="form-label fw-bold">Ulasan / Catatan Lapangan PIC</label>
+              <textarea class="form-control" id="gradingNotes" rows="3" placeholder="Sangat baik, konfigurasi vlan sudah berjalan lancar..."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+            <button type="submit" class="btn btn-primary">Simpan Laporan & Nilai</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Google Apps Script Run Client Code -->
+  <script>
+    // Active User State
+    let currentUser = null;
+    let jobdesksMap = {};
+    let activeFileUpload = null; // Stored file object converted to base64 { base64: '...', mimeType: '...', name: '...' }
+
+    // Init App on document ready
+    document.addEventListener("DOMContentLoaded", function() {
+      showLoading(true, "Menghubungi Server Vokasi UNY...");
+      
+      // Auto Setup check database triggers
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          // Standard view is authentication
+          showView("authView");
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal koneksi ke server, pastikan database Setup dijalankan: " + err);
+          showView("authView");
+        })
+        .getJobdesks(); // simple call to verify network
+    });
+
+    /**
+     * Interface View switching helper
+     */
+    function showView(viewId) {
+      document.getElementById("authView").classList.add("d-none");
+      document.getElementById("anggotaView").classList.add("d-none");
+      document.getElementById("ketuaView").classList.add("d-none");
+      document.getElementById("picView").classList.add("d-none");
+      document.getElementById("heroSection").classList.add("d-none");
+      
+      if (viewId === "authView") {
+        document.getElementById("userInfoPanel").classList.add("d-none");
+      } else {
+        document.getElementById("userInfoPanel").classList.remove("d-none");
+        document.getElementById("heroSection").classList.remove("d-none");
+      }
+      
+      document.getElementById(viewId).classList.remove("d-none");
+    }
+
+    /**
+     * Loading Spinner Screen control
+     */
+    function showLoading(state, text) {
+      const overlay = document.getElementById("loadingOverlay");
+      const label = document.getElementById("loadingText");
+      if (text) label.innerText = text;
+      
+      if (state) {
+        overlay.style.display = "flex";
+      } else {
+        overlay.style.display = "none";
+      }
+    }
+
+    // ================== AUTHENTICATION PROCESS ==================
+
+    function handleRegister(e) {
+      e.preventDefault();
+      const nim = document.getElementById("regNim").value;
+      const name = document.getElementById("regName").value;
+      const email = document.getElementById("regEmail").value;
+      const pass = document.getElementById("regPassword").value;
+      
+      showLoading(true, "Mendaftarkan NIM: " + nim + "...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+          if (res.success) {
+            document.getElementById("formRegister").reset();
+            // Switch pill to login
+            const loginTrigger = new bootstrap.Tab(document.getElementById('tab-login'));
+            loginTrigger.show();
+          }
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Error Registrasi: " + err);
+        })
+        .registerUser(nim, name, email, pass);
+    }
+
+    function handleLogin(e) {
+      e.preventDefault();
+      const nim = document.getElementById("loginNim").value;
+      const pass = document.getElementById("loginPassword").value;
+      
+      showLoading(true, "Memvalidasi Akreditasi NIM...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          if (res.success) {
+            currentUser = res.user;
+            setupLoggedSession();
+          } else {
+            alert(res.message);
+          }
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal Login: " + err);
+        })
+        .loginUser(nim, pass);
+    }
+
+    function setupLoggedSession() {
+      // Set values on layout header
+      document.getElementById("navUserIdentity").innerText = currentUser.name;
+      document.getElementById("navUserRole").innerText = currentUser.role;
+      setRoleLabelBadgeStyles(currentUser.role, document.getElementById("navUserRole"));
+      
+      document.getElementById("welcomeUser").innerText = "Selamat Bekerja, " + currentUser.name + "!";
+      document.getElementById("welcomeSub").innerText = "Fakultas Vokasi UNY • Peran: " + currentUser.role;
+      document.getElementById("userNimDisplay").innerText = currentUser.nim;
+      
+      // Load respective dashboard based on role
+      routeUserDashboard();
+    }
+
+    function logout() {
+      showLoading(true, "Keluar dari sesi UNY...");
+      setTimeout(function() {
+        currentUser = null;
+        document.getElementById("formLogin").reset();
+        document.getElementById("formRegister").reset();
+        showView("authView");
+        showLoading(false);
+      }, 500);
+    }
+
+    function routeUserDashboard() {
+      if (currentUser.role === 'PIC') {
+        showView("picView");
+        loadPicGradingDashboard();
+      } else if (currentUser.role === 'Ketua') {
+        showView("ketuaView");
+        loadKetuaDashboard();
+      } else {
+        // Anggota, Sekretaris, Koor, dll. Uses Member dashboard
+        showView("anggotaView");
+        loadAnggotaDashboard();
+      }
+    }
+
+    function setRoleLabelBadgeStyles(role, element) {
+      element.className = 'badge role-badge ';
+      if (role === 'PIC') element.classList.add('role-pic');
+      else if (role === 'Ketua') element.classList.add('role-ketua');
+      else if (role === 'Anggota') element.classList.add('role-anggota');
+      else if (role === 'Sekretaris') element.classList.add('role-sekretaris');
+      else element.classList.add('role-koor');
+    }
+
+    // ================== ANGGOTA WORKSPACE WORKBOARD ==================
+
+    function loadAnggotaDashboard() {
+      showLoading(true, "Memuat penugasan harian...");
+      
+      // Load Jobdesk
+      document.getElementById("memberRoleBadge").innerText = currentUser.role;
+      google.script.run
+        .withSuccessHandler(function(jobdeskText) {
+          document.getElementById("memberJobdeskBox").innerText = jobdeskText;
+        })
+        .getMemberJobdesk(currentUser.role);
+        
+      // Load Member Tasks
+      google.script.run
+        .withSuccessHandler(function(tasks) {
+          showLoading(false);
+          const tasksContainer = document.getElementById("memberTasksList");
+          tasksContainer.innerHTML = '';
+          
+          let pendingCount = 0;
+          if (tasks.length === 0) {
+            tasksContainer.innerHTML = `
+              <div class="col-12 text-center py-5">
+                <span class="text-muted">Tidak ada tugas aktif yang sedang didelegasikan oleh ketua saat ini.</span>
+              </div>
+            `;
+          } else {
+            tasks.forEach(function(task) {
+              if (task.status === 'Pending') pendingCount++;
+              
+              const isCompleted = task.status === 'Completed';
+              const cardHtml = `
+                <div class="col-md-6 mb-3">
+                  <div class="card p-3 border-start border-4 ${isCompleted ? 'border-success' : 'border-danger'}">
+                    <div class="d-flex justify-content-between mb-2">
+                      <span class="badge ${getCategoryBadgeClass(task.category)}">${task.category}</span>
+                      <span class="badge ${isCompleted ? 'bg-success' : 'bg-warning text-dark'}">${task.status}</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">${task.taskName}</h6>
+                    <p class="small text-muted text-justify mb-3" style="font-size: 0.85rem;">${task.description}</p>
+                    <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
+                      <small class="text-muted">Dari NIM: ${task.createdBy}</small>
+                      ${isCompleted 
+                        ? `<button class="btn btn-sm btn-success" disabled>✓ Selesai</button>`
+                        : `<button class="btn btn-sm btn-outline-primary" onclick="openCompleteTaskModal('${task.taskId}', '${task.taskName}', '${task.description}')">Tandai Selesai</button>`
+                      }
+                    </div>
+                  </div>
+                </div>
+              `;
+              tasksContainer.innerHTML += cardHtml;
+            });
+          }
+          document.getElementById("memberActiveTasksCount").innerText = pendingCount;
+        })
+        .getTasksForMember(currentUser.nim);
+    }
+
+    function getCategoryBadgeClass(cat) {
+      if (cat === 'Jaringan') return 'badge-jaringan';
+      if (cat === 'Website') return 'badge-website';
+      return 'badge-admin';
+    }
+
+    // Modal Control Task Complete
+    function openCompleteTaskModal(id, title, desc) {
+      document.getElementById("completeTaskId").value = id;
+      document.getElementById("completeTaskTitle").innerText = 'Selesaikan: ' + title;
+      document.getElementById("completeTaskDesc").innerText = desc;
+      document.getElementById("completeWorkDesc").value = '';
+      
+      // Reset Upload File Box
+      activeFileUpload = null;
+      document.getElementById("selectedFileName").innerText = 'Belum ada berkas terpilih';
+      document.getElementById("selectedFileName").className = 'badge bg-secondary';
+      
+      const modal = new bootstrap.Modal(document.getElementById("modalCompleteTask"));
+      modal.show();
+    }
+
+    function triggerFileInput() {
+      document.getElementById("fileUploadInput").click();
+    }
+
+    // Implement real visual files binary reading
+    function processFileSelection(files) {
+      if (files.length === 0) return;
+      const file = files[0];
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const rawContent = e.target.result;
+        const base64Index = rawContent.indexOf(';base64,') + 8;
+        const base64String = rawContent.substring(base64Index);
+        
+        activeFileUpload = {
+          base64: base64String,
+          mimeType: file.type,
+          name: file.name
+        };
+        
+        document.getElementById("selectedFileName").innerText = 'Terunggah: ' + file.name;
+        document.getElementById("selectedFileName").className = 'badge bg-success';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleCompleteTaskSubmit(e) {
+      e.preventDefault();
+      const taskId = document.getElementById("completeTaskId").value;
+      const workDesc = document.getElementById("completeWorkDesc").value;
+      
+      if (!activeFileUpload) {
+        alert("Pemberitahuan: Mohon unggah berkas bukti dukung (foto / screenshot perangkat lab / PDF)!");
+        return;
+      }
+      
+      const modalElement = document.getElementById("modalCompleteTask");
+      const modal = bootstrap.Modal.getInstance(modalElement);
+      modal.hide();
+      
+      showLoading(true, "Menyimpan Logbook & mengupload data bukti ke Drive...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+          loadAnggotaDashboard();
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal mengunggah penyelesaian: " + err);
+        })
+        .completeTaskAndUpload(currentUser.nim, taskId, workDesc, activeFileUpload);
+    }
+
+    // ================== KETUA DASHBOARD OPERATION ==================
+
+    function loadKetuaDashboard() {
+      showLoading(true, "Menghimpun daftar anggota magang...");
+      // For task assignment, populate member NIM dropdown
+      google.script.run
+        .withSuccessHandler(function(users) {
+          const select = document.getElementById("taskAssignedNim");
+          select.innerHTML = '<option value="">-- Pilih Mahasiswa Aktif --</option>';
+          
+          users.forEach(function(u) {
+            // Do not delegate to PIC or oneself
+            if (u.role !== 'PIC' && u.nim.toString() !== currentUser.nim.toString()) {
+              select.innerHTML += `<option value="${u.nim}">${u.name} (NIM: ${u.nim} - ${u.role})</option>`;
+            }
+          });
+          
+          // Get delegated tasks list
+          google.script.run
+            .withSuccessHandler(function(tasks) {
+              showLoading(false);
+              const tbody = document.getElementById("delegatedTasksTableBody");
+              tbody.innerHTML = '';
+              
+              if (tasks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-muted">Belum ada tugas yang Anda distribusikan harian.</td></tr>`;
+              } else {
+                tasks.forEach(function(t) {
+                  const isCompleted = t.status === 'Completed';
+                  // Lookup student name based on nim
+                  const student = users.find(function(usr) { return usr.nim.toString() === t.assignedNim.toString(); });
+                  const studentName = student ? student.name : 'NIM: ' + t.assignedNim;
+                  
+                  tbody.innerHTML += `
+                    <tr>
+                      <td>
+                        <div class="fw-semibold">${t.taskName}</div>
+                        <div class="text-muted small">${t.category}</div>
+                      </td>
+                      <td>
+                        <div class="small fw-semibold">${studentName}</div>
+                        <div class="text-muted small" style="font-size:0.75rem;">NIM ${t.assignedNim}</div>
+                      </td>
+                      <td>
+                        <span class="badge ${isCompleted ? 'bg-success' : 'bg-warning text-dark'}">${t.status}</span>
+                      </td>
+                    </tr>
+                  `;
+                });
+              }
+            })
+            .getTasksByKetua(currentUser.nim);
+        })
+        .getUsersList();
+    }
+
+    function handleCreateTask(e) {
+      e.preventDefault();
+      const name = document.getElementById("taskName").value;
+      const cat = document.getElementById("taskCategory").value;
+      const assigned = document.getElementById("taskAssignedNim").value;
+      const desc = document.getElementById("taskDescription").value;
+      
+      showLoading(true, "Mendelegasikan penugasan baru...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+          document.getElementById("formDelegateTask").reset();
+          loadKetuaDashboard();
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal menugaskan: " + err);
+        })
+        .createTask(name, cat, desc, assigned, currentUser.nim);
+    }
+
+    // ================== PIC / DOSEN KOORDINATOR WORKSPACE ==================
+
+    function loadPicGradingDashboard() {
+      showLoading(true, "Sinkronisasi logbook terbaru...");
+      
+      // Fetch Logbooks
+      google.script.run
+        .withSuccessHandler(function(logs) {
+          const tbody = document.getElementById("completedLogbooksTableBody");
+          tbody.innerHTML = '';
+          
+          if (logs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">Belum ada logbook anggota yang selesai dikerjakan untuk dinilai.</td></tr>`;
+          } else {
+            logs.forEach(function(item) {
+              // Sanitize display strings for safe HTML injection
+              const safeStudentName = (item.studentName || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const safeTaskName    = (item.taskName    || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const safeWorkDesc    = (item.workDescription || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              // Encode the full item as JSON in a data attribute to avoid single-quote conflicts in onclick
+              const dataJson = JSON.stringify({
+                logbookId: item.logbookId,
+                taskName: item.taskName,
+                workDescription: item.workDescription,
+                fileUrl: item.fileUrl,
+                nim: item.nim,
+                grade: item.grade
+              }).replace(/"/g, '&quot;');
+              
+              tbody.innerHTML += `
+                <tr>
+                  <td>
+                    <div class="fw-semibold">${safeStudentName}</div>
+                    <div class="text-muted small">NIM: ${item.nim}</div>
+                  </td>
+                  <td>
+                    <div class="fw-semibold">${safeTaskName}</div>
+                    <div class="small text-muted" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis;">${safeWorkDesc}</div>
+                  </td>
+                  <td>
+                    ${item.fileUrl 
+                      ? `<a href="${item.fileUrl}" target="_blank" class="btn btn-xs btn-outline-info p-1 px-2 font-monospace" style="font-size:0.75rem;">Tinjau Berkas</a>` 
+                      : '<span class="text-muted italic small">Tanpa Dokumen</span>'}
+                  </td>
+                  <td>
+                    <span class="badge ${item.grade ? 'bg-success' : 'bg-secondary'}">${item.grade ? item.grade : 'Belum Dinilai'}</span>
+                  </td>
+                  <td>
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-warning" data-logbook="${dataJson}" onclick="openGradingModalFromBtn(this)">Beri Nilai</button>
+                      <button class="btn btn-primary" data-nim="${item.nim}" data-grade="${item.grade || 85}" onclick="triggerBuildAndPrint(this.dataset.nim, this.dataset.grade)">Cetak SKEK</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            });
+          }
+          
+          // Next, load Users with roles
+          loadPicUsersRoles();
+        })
+        .getCompletedLogbooks();
+    }
+
+    function loadPicUsersRoles() {
+      google.script.run
+        .withSuccessHandler(function(users) {
+          const tbody = document.getElementById("usersRolesTableBody");
+          tbody.innerHTML = '';
+          
+          users.forEach(function(u) {
+            tbody.innerHTML += `
+              <tr>
+                <td>${u.nim}</td>
+                <td class="fw-semibold">${u.name}</td>
+                <td>${u.email}</td>
+                <td><span class="badge ${getRoleClass(u.role)}">${u.role}</span></td>
+                <td>
+                  <select class="form-select form-select-sm" style="width: 150px;" onchange="handleRoleChange('${u.nim}', this.value)">
+                    <option value="Anggota" ${u.role==='Anggota'?'selected':''}>Anggota</option>
+                    <option value="Ketua" ${u.role==='Ketua'?'selected':''}>Ketua</option>
+                    <option value="Sekretaris" ${u.role==='Sekretaris'?'selected':''}>Sekretaris</option>
+                    <option value="Koordinator Ruangan" ${u.role==='Koordinator Ruangan'?'selected':''}>Koordinator Ruangan</option>
+                    <option value="Koordinator Alat" ${u.role==='Koordinator Alat'?'selected':''}>Koordinator Alat</option>
+                    <option value="Tim Support" ${u.role==='Tim Support'?'selected':''}>Tim Support</option>
+                  </select>
+                </td>
+              </tr>
+            `;
+          });
+          
+          showLoading(false);
+        })
+        .getUsersList();
+    }
+
+    function getRoleClass(role) {
+      if (role === 'PIC') return 'bg-danger text-white';
+      if (role === 'Ketua') return 'bg-warning text-dark';
+      if (role === 'Anggota') return 'bg-success text-white';
+      return 'bg-secondary text-white';
+    }
+
+    function handleRoleChange(nim, newRole) {
+      showLoading(true, "Memperbarui Peran NIM: " + nim + "...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+          loadPicGradingDashboard();
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal mengubah peran: " + err);
+        })
+        .updateUserRole(nim, newRole);
+    }
+
+    // Grading Modal Control — safe version using data attributes
+    function openGradingModalFromBtn(btn) {
+      const item = JSON.parse(btn.dataset.logbook);
+      openGradingModal(item.logbookId, item.taskName, item.workDescription, item.fileUrl);
+    }
+
+    function openGradingModal(id, title, desc, file) {
+      document.getElementById("gradingLogbookId").value = id;
+      document.getElementById("gradingActivityTitle").innerText = title;
+      document.getElementById("gradingActivityDesc").innerText = desc;
+      
+      const box = document.getElementById("gradingFileBox");
+      const anchor = document.getElementById("gradingFileAnchor");
+      if (file) {
+        box.classList.remove("d-none");
+        anchor.href = file;
+      } else {
+        box.classList.add("d-none");
+      }
+      
+      document.getElementById("gradingValue").value = '';
+      document.getElementById("gradingNotes").value = '';
+      
+      const modal = new bootstrap.Modal(document.getElementById("modalGrading"));
+      modal.show();
+    }
+
+    function handleGradingSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById("gradingLogbookId").value;
+      const val = document.getElementById("gradingValue").value;
+      const notes = document.getElementById("gradingNotes").value;
+      
+      const modal = bootstrap.Modal.getInstance(document.getElementById("modalGrading"));
+      modal.hide();
+      
+      showLoading(true, "Menyimpan nilai logbook...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+          loadPicGradingDashboard();
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal menilai logbook: " + err);
+        })
+        .gradeLogbook(id, val, notes);
+    }
+
+    // Jobdesks Editor controls
+    let selectedRoleInEditor = 'Anggota';
+    
+    function loadJobdeskToEditor(role) {
+      selectedRoleInEditor = role;
+      document.getElementById("editorActiveRole").innerText = role;
+      
+      // Update Active list UI class
+      const links = document.querySelectorAll("#jobdeskRoleList button");
+      links.forEach(function(btn) {
+        if (btn.innerText === role) btn.classList.add("active");
+        else btn.classList.remove("active");
+      });
+      
+      showLoading(true, "Membaca jobdesk untuk: " + role + "...");
+      google.script.run
+        .withSuccessHandler(function(jMap) {
+          showLoading(false);
+          jobdesksMap = jMap;
+          document.getElementById("jobdeskTextArea").value = jMap[role] || '';
+        })
+        .getJobdesks();
+    }
+
+    function handleSaveJobdesk() {
+      const text = document.getElementById("jobdeskTextArea").value;
+      showLoading(true, "Menyimpan tanggung jawab peran...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal menyimpan: " + err);
+        })
+        .saveJobdesk(selectedRoleInEditor, text);
+    }
+
+    // Config setups
+    function handleSaveConfig(e) {
+      e.preventDefault();
+      const drive = document.getElementById("configDriveFolderId").value;
+      const doc = document.getElementById("configDocTemplateId").value;
+      const slide = document.getElementById("configSlideTemplateId").value;
+      
+      showLoading(true, "Merekam konfigurasi Drive & API templates...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Gagal merekam: " + err);
+        })
+        .saveConfiguration(drive, doc, slide);
+    }
+
+    // Trigger Doc Portfolio and Slides Certificate automated generation
+    function triggerBuildAndPrint(nim, overallGrade) {
+      const confirmed = confirm("Konfirmasi Cetak: Buat sertifikat kelulusan & portofolio logbook PDF untuk NIM: " + nim + " dan kirim langsung secara otomatis ke Email?");
+      if (!confirmed) return;
+      
+      showLoading(true, "Memulai integrasi Google Suite: menyalin Slide sertifikat, menyusun Docs tabel rekap, mengekspor ke PDF, lalu mengirim email otomatis...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Error Integrasi Google Apps Script: " + err);
+        })
+        .generatePortfolioAndCertificate(nim, overallGrade);
+    }
+
+    // Auto setup sheet structures directly via client button triggers
+    function runDatabaseSetup() {
+      showLoading(true, "Menginisialisasi tabel database & data awal...");
+      google.script.run
+        .withSuccessHandler(function(res) {
+          showLoading(false);
+          alert(res.message);
+        })
+        .withFailureHandler(function(err) {
+          showLoading(false);
+          alert("Error setup: " + err);
+        })
+        .setupDatabase();
+    }
+  </script>
+</body>
+</html>
