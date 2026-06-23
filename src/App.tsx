@@ -223,6 +223,9 @@ interface Task {
   points?: string[]; // Checklist copy from MasterTask
   pointsChecked?: boolean[]; // Checked state for each point harian
   checkDates?: string[]; // Date each point was checked
+  pointsTotal?: number;    // Total jumlah butir checklist (disimpan langsung di DB)
+  dbCheckedCount?: number; // Jumlah butir yang sudah tercentang (disimpan langsung di DB)
+  percentage?: number;     // Persentase yang sudah dihitung oleh user view (disimpan di DB)
   timelineLogs?: { date: string; description: string; hours: number }[]; // daily timeline logs
   docContent?: {
     judul: string;
@@ -730,18 +733,9 @@ export default function App() {
           const repairedTasks = (data.tasks as Task[]).map(t => {
             const master = mTasks.find(m => m.id === t.masterTaskId || (t.taskName || '').toLowerCase().trim() === (m.title || '').toLowerCase().trim());
             if (master && master.points) {
-              const rawPoints = (t as any).points; // Supabase column 'points'
-              let oldChecked: boolean[] = [];
-              let oldDates: string[] = [];
-              if (Array.isArray(rawPoints)) {
-                oldChecked = rawPoints;
-              } else if (rawPoints && typeof rawPoints === 'object') {
-                oldChecked = rawPoints.checked || [];
-                oldDates = rawPoints.dates || [];
-              } else {
-                oldChecked = t.pointsChecked || [];
-                oldDates = t.checkDates || [];
-              }
+              // supabase.ts already cleaned pointsChecked & checkDates from the raw DB `points` column
+              const oldChecked: boolean[] = t.pointsChecked || [];
+              const oldDates: string[] = t.checkDates || [];
               const finalPoints = master.points;
               const newChecked = new Array(finalPoints.length).fill(false);
               const newDates = new Array(finalPoints.length).fill('');
@@ -827,8 +821,14 @@ export default function App() {
           const progressPct = pointsLen > 0 ? Math.round((checkedCount / pointsLen) * 100) : 0;
           return {
             id: t.taskId, masterid: t.masterTaskId || null, assignednim: t.assignedNim, taskname: t.taskName, category: t.category,
-            dateassigned: (t as any).dateAssigned || new Date().toISOString(), status: t.status, progress: progressPct, completeddesc: (t as any).completedDesc || '-', 
-            completeddate: (t as any).completedDate || '-', googledocurl: t.googleDocUrl, points: { checked: t.pointsChecked || [], dates: t.checkDates || [] }
+            dateassigned: (t as any).dateAssigned || new Date().toISOString(), status: t.status, progress: progressPct,
+            // ── Tiga integer ini adalah sumber kebenaran persentase ──
+            pointstotal: pointsLen,      // total butir checklist
+            checkedcount: checkedCount,  // butir yang sudah tercentang
+            percentage: progressPct,     // nilai persentase bulat
+            completeddesc: (t as any).completedDesc || '-', 
+            completeddate: (t as any).completedDate || '-', googledocurl: t.googleDocUrl,
+            points: { checked: t.pointsChecked || [], dates: t.checkDates || [] }
           };
         }));
         if (logbooks.length) await db.runMutation('logbooks', 'upsert', logbooks.map(l => ({
@@ -1671,7 +1671,19 @@ export default function App() {
     } else {
       updatedDates[pointIndex] = '';
     }
-    setTasks(tasks.map(t => t.taskId === taskToUpdate.taskId ? { ...t, pointsChecked: updatedChecked, checkDates: updatedDates } : t));
+    
+    // Langsung hitung persentase di sisi user untuk disimpan
+    const updatedCheckedCount = updatedChecked.filter(Boolean).length;
+    const pointsTotal = taskToUpdate.pointsTotal && taskToUpdate.pointsTotal > 0 ? taskToUpdate.pointsTotal : updatedChecked.length;
+    const updatedPct = pointsTotal > 0 ? Math.round((updatedCheckedCount / pointsTotal) * 100) : 0;
+    
+    setTasks(tasks.map(t => t.taskId === taskToUpdate.taskId ? { 
+      ...t, 
+      pointsChecked: updatedChecked, 
+      checkDates: updatedDates,
+      dbCheckedCount: updatedCheckedCount,
+      percentage: updatedPct
+    } : t));
   };
 
   const handleAddTimelineRow = (taskId: string, date: string, desc: string, hrs: number) => {
@@ -2431,12 +2443,20 @@ export default function App() {
                           ) : (
                             tasks.filter(t => t.assignedNim === activeUser.nim).map(task => {
                               const isCompleted = task.status === 'Completed';
+                              // Ambil checklist items untuk ditampilkan (fallback ke master_tasks jika belum ada)
                               const rawPoints = Array.isArray(task.points) ? task.points : (masterTasks.find(m => m.id === task.masterTaskId)?.points || []);
-                              const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                              const points = validPoints.length > 0 ? validPoints : [];
-                              const checkedArr = task.pointsChecked || new Array(points.length).fill(false);
-                              const checkedCount = checkedArr.filter(Boolean).length;
-                              const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
+                              const points = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+                              // ── SUMBER KEBENARAN: pointsChecked boolean array ──
+                              // Jika legacy data dan kosong, buat dummy array berdasarkan points
+                              const checkedArr = (task.pointsChecked && task.pointsChecked.length > 0) ? task.pointsChecked : new Array(points.length).fill(false);
+                              
+                              const boolTotal    = checkedArr.length;
+                              const boolChecked  = checkedArr.filter(Boolean).length;
+                              
+                              // Jika percentage dari DB tersedia, pakai langsung (sangat mempermudah kinerja frontend)
+                              let pct = isCompleted ? 100 : (task.percentage != null ? task.percentage : (boolTotal > 0 ? Math.round(boolChecked / boolTotal * 100) : 0));
+                              const checkedCount = task.dbCheckedCount ?? boolChecked;
+                              const finalTotal = task.pointsTotal ?? boolTotal;
 
                               return (
                                 <div key={task.taskId} className={`p-5 border rounded-3xl flex flex-col justify-between transition-all duration-300 ${isCompleted ? 'border-emerald-200 bg-emerald-50/25 shadow-sm' : 'border-blue-105 bg-[#f7fafe]/70 hover:bg-white shadow-sm'}`}>
@@ -2734,11 +2754,16 @@ export default function App() {
                                 tasks.filter(t => t.assignedNim === activeUser.nim).map(task => {
                                   const isCompleted = task.status === 'Completed';
                                   const rawPoints = Array.isArray(task.points) ? task.points : (masterTasks.find(m => m.id === task.masterTaskId)?.points || []);
-                                  const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                                  const points = validPoints.length > 0 ? validPoints : [];
-                                  const checkedArr = task.pointsChecked || new Array(points.length).fill(false);
-                                  const checkedCount = checkedArr.filter(Boolean).length;
-                                  const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
+                                  const points = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+                                  const checkedArr = (task.pointsChecked && task.pointsChecked.length > 0) ? task.pointsChecked : new Array(points.length).fill(false);
+                                  // ── SUMBER KEBENARAN: pointsChecked boolean array ──
+                                  const boolTotal    = checkedArr.length;
+                                  const boolChecked  = checkedArr.filter(Boolean).length;
+                                  
+                                  // Ambil langsung nilai persentase dari Supabase agar ringan
+                                  let pct = isCompleted ? 100 : (task.percentage != null ? task.percentage : (boolTotal > 0 ? Math.round(boolChecked / boolTotal * 100) : 0));
+                                  const checkedCount = task.dbCheckedCount ?? boolChecked;
+                                  const finalTotal = task.pointsTotal ?? boolTotal;
 
                                   return (
                                     <div key={task.taskId} className={`p-5 border rounded-3xl flex flex-col justify-between transition-all duration-300 ${isCompleted ? 'border-emerald-200 bg-emerald-50/25 shadow-sm' : 'border-blue-105 bg-[#f7fafe]/70 hover:bg-white shadow-sm'}`}>
@@ -3142,11 +3167,16 @@ export default function App() {
                                    tasks.map(t => {
                                       const assignee = users.find(u => u.nim === t.assignedNim);
                                       const rawPoints = Array.isArray(t.points) ? t.points : (masterTasks.find(m => m.id === t.masterTaskId)?.points || []);
-                                      const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                                      const points = validPoints.length > 0 ? validPoints : [];
-                                      const checkedArr = t.pointsChecked || new Array(points.length).fill(false);
-                                      const checkedCount = checkedArr.filter(Boolean).length;
-                                      const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
+                                      const points = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+                                      // ── SUMBER KEBENARAN: pointsChecked boolean array (sama dengan yang user centang) ──
+                                      const checkedBools = (t.pointsChecked && t.pointsChecked.length > 0) ? t.pointsChecked : new Array(points.length).fill(false);
+                                      const boolTotal    = checkedBools.length;
+                                      const boolChecked  = checkedBools.filter(Boolean).length;
+                                      
+                                      // Ambil nilai persentase langsung dari database yang disimpan oleh view user
+                                      let pct = t.status === 'Completed' ? 100 : (t.percentage != null ? t.percentage : (boolTotal > 0 ? Math.round(boolChecked / boolTotal * 100) : 0));
+                                      const checkedCount = t.dbCheckedCount ?? boolChecked;
+                                      const pointsTotal = t.pointsTotal ?? boolTotal;
 
                                       return (
                                         <tr key={t.taskId} className="border-b border-slate-100 text-[11px] hover:bg-slate-50/50">
@@ -3166,7 +3196,7 @@ export default function App() {
                                                 {t.status === 'Completed' ? '✓ 100% Selesai' : `${pct}% Dituntaskan`}
                                               </span>
                                               <span className="text-[9.5px] text-slate-400 font-medium">
-                                                {checkedCount} dari {points.length} Capaian
+                                                {checkedCount} dari {pointsTotal} Capaian
                                               </span>
                                               {/* Mini progress bar tracker */}
                                               <div className="w-16 bg-slate-100 h-1 rounded-full overflow-hidden mt-0.5 border border-slate-200">
@@ -3439,11 +3469,16 @@ export default function App() {
                                 tasks.map(t => {
                                   const assignee = users.find(u => u.nim === t.assignedNim);
                                   const rawPoints = Array.isArray(t.points) ? t.points : (masterTasks.find(m => m.id === t.masterTaskId)?.points || []);
-                                  const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                                  const points = validPoints.length > 0 ? validPoints : [];
-                                  const checkedArr = t.pointsChecked || new Array(points.length).fill(false);
-                                  const checkedCount = checkedArr.filter(Boolean).length;
-                                  const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
+                                  const points = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+                                  // ── SUMBER KEBENARAN: pointsChecked boolean array (sama dengan yang user centang) ──
+                                  const checkedBools = (t.pointsChecked && t.pointsChecked.length > 0) ? t.pointsChecked : new Array(points.length).fill(false);
+                                  const boolTotal    = checkedBools.length;
+                                  const boolChecked  = checkedBools.filter(Boolean).length;
+                                  
+                                  // Menggunakan instruksi database-first: tak usah convert, ambil nilai database
+                                  let pct = t.status === 'Completed' ? 100 : (t.percentage != null ? t.percentage : (boolTotal > 0 ? Math.round(boolChecked / boolTotal * 100) : 0));
+                                  const checkedCount = t.dbCheckedCount ?? boolChecked;
+                                  const pointsTotal = t.pointsTotal ?? boolTotal;
 
                                   return (
                                     <tr key={t.taskId} className="border-b border-slate-100 text-[11px] hover:bg-slate-50/50">

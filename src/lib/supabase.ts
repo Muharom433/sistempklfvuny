@@ -69,19 +69,42 @@ export const db = {
         workType: m.worktype,
         targetRole: m.targetrole
       })),
-      tasks: (tasksData || []).map((t: any) => ({
-        ...t,
-        taskId: t.id,
-        masterTaskId: t.masterid,
-        assignedNim: t.assignednim,
-        taskName: t.taskname,
-        dateAssigned: t.dateassigned,
-        completedDesc: t.completeddesc,
-        completedDate: t.completeddate,
-        googleDocUrl: t.googledocurl,
-        pointsChecked: typeof t.points === 'string' ? JSON.parse(t.points).checked : (t.points?.checked || []),
-        checkDates: typeof t.points === 'string' ? JSON.parse(t.points).dates : (t.points?.dates || [])
-      })),
+      tasks: (tasksData || []).map((t: any) => {
+        // Parse raw `points` column from Supabase (stored as { checked: bool[], dates: str[] })
+        let rawPointsCol = t.points;
+        if (typeof rawPointsCol === 'string') {
+          try { rawPointsCol = JSON.parse(rawPointsCol); } catch (_) { rawPointsCol = null; }
+        }
+        const pointsChecked: boolean[] = Array.isArray(rawPointsCol)
+          ? rawPointsCol  // legacy: was stored as bool[]
+          : (rawPointsCol?.checked || []);
+        const checkDates: string[] = Array.isArray(rawPointsCol)
+          ? []            // legacy format had no dates
+          : (rawPointsCol?.dates || []);
+
+        // Destructure to remove raw `points` from spread so it does NOT shadow
+        // the string[] `points` that App.tsx sets after merging with master_tasks.
+        const { points: _rawPointsDrop, ...rest } = t;
+        return {
+          ...rest,
+          taskId: t.id,
+          masterTaskId: t.masterid,
+          assignedNim: t.assignednim,
+          taskName: t.taskname,
+          dateAssigned: t.dateassigned,
+          completedDesc: t.completeddesc,
+          completedDate: t.completeddate,
+          googleDocUrl: t.googledocurl,
+          // ── Tiga integer sumber kebenaran persentase ──
+          pointsTotal:    typeof t.pointstotal   === 'number' ? t.pointstotal   : null,
+          dbCheckedCount: typeof t.checkedcount  === 'number' ? t.checkedcount  : null,
+          percentage:     typeof t.percentage    === 'number' ? t.percentage    : null,
+          // `points` (string[]) will be filled by App.tsx repair logic from master_tasks
+          points: undefined,
+          pointsChecked,
+          checkDates,
+        };
+      }),
       logbooks: (logbooksData || []).map((l: any) => ({
         ...l,
         logbookId: l.logbookid,
@@ -161,6 +184,20 @@ export const db = {
         '| payload sample:',
         JSON.stringify(Array.isArray(payload) ? payload[0] : payload)
       );
+      // Graceful retry for tasks: jika kolom baru belum ada di schema, coba tanpa mereka
+      if (table === 'tasks' && method === 'upsert' &&
+          (error.message?.includes('pointstotal') || error.message?.includes('checkedcount') || error.message?.includes('percentage'))) {
+        console.warn('[Supabase] Retrying tasks upsert without new integer columns (schema belum di-ALTER).');
+        const strip = (p: any) => { const { pointstotal, checkedcount, percentage, ...r } = p; return r; };
+        const fallback = Array.isArray(payload) ? payload.map(strip) : strip(payload);
+        const conflictCol = UPSERT_CONFLICT_COLUMNS[table];
+        const fbQuery = conflictCol
+          ? supabase.from(table).upsert(fallback, { onConflict: conflictCol })
+          : supabase.from(table).upsert(fallback);
+        const { error: fbErr } = await fbQuery;
+        if (fbErr) console.error('[Supabase] Fallback tasks upsert error:', JSON.stringify(fbErr));
+        return;
+      }
       throw error;
     }
 
