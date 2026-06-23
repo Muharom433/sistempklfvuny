@@ -79,7 +79,8 @@ export const db = {
         completedDesc: t.completeddesc,
         completedDate: t.completeddate,
         googleDocUrl: t.googledocurl,
-        pointsChecked: t.points
+        pointsChecked: typeof t.points === 'string' ? JSON.parse(t.points).checked : (t.points?.checked || []),
+        checkDates: typeof t.points === 'string' ? JSON.parse(t.points).dates : (t.points?.dates || [])
       })),
       logbooks: (logbooksData || []).map((l: any) => ({
         ...l,

@@ -820,11 +820,17 @@ export default function App() {
         if (masterTasks.length) await db.runMutation('master_tasks', 'upsert', masterTasks.map(m => ({
           id: m.id, title: m.title, category: m.category, description: m.description, points: m.points, worktype: m.workType, targetrole: m.targetRole
         })));
-        if (tasks.length) await db.runMutation('tasks', 'upsert', tasks.map(t => ({
-          id: t.taskId, masterid: t.masterTaskId || null, assignednim: t.assignedNim, taskname: t.taskName, category: t.category,
-          dateassigned: (t as any).dateAssigned || new Date().toISOString(), status: t.status, progress: (t as any).progress || 0, completeddesc: (t as any).completedDesc || '-', 
-          completeddate: (t as any).completedDate || '-', googledocurl: t.googleDocUrl, points: { checked: t.pointsChecked, dates: t.checkDates }
-        })));
+        if (tasks.length) await db.runMutation('tasks', 'upsert', tasks.map(t => {
+          const pointsLen = t.points?.length || 0;
+          const checkedArr = t.pointsChecked || [];
+          const checkedCount = checkedArr.filter(Boolean).length;
+          const progressPct = pointsLen > 0 ? Math.round((checkedCount / pointsLen) * 100) : 0;
+          return {
+            id: t.taskId, masterid: t.masterTaskId || null, assignednim: t.assignedNim, taskname: t.taskName, category: t.category,
+            dateassigned: (t as any).dateAssigned || new Date().toISOString(), status: t.status, progress: progressPct, completeddesc: (t as any).completedDesc || '-', 
+            completeddate: (t as any).completedDate || '-', googledocurl: t.googleDocUrl, points: { checked: t.pointsChecked || [], dates: t.checkDates || [] }
+          };
+        }));
         if (logbooks.length) await db.runMutation('logbooks', 'upsert', logbooks.map(l => ({
           logbookid: l.logbookId, taskid: l.taskId, nim: l.nim, taskname: l.taskName, category: l.category, date: l.timestamp, 
           workdescription: l.workDescription, hoursspent: l.hoursSpent || 0, grade: l.grade, gradenote: l.notes, googledocurl: l.googleDocUrl
@@ -1861,12 +1867,13 @@ export default function App() {
     setGradeInput('');
     setGradeNotes('');
 
-    // Langsung push nilai ke Supabase
+    // Langsung push nilai ke Supabase dengan upsert agar aman
     try {
-      await db.runMutation('logbooks', 'update',
-        { grade: gradeInput, gradenote: gradeNotes },
-        { column: 'logbookid', value: selectedLogbookToGrade.logbookId }
-      );
+      const l = updatedLogbook;
+      await db.runMutation('logbooks', 'upsert', {
+        logbookid: l.logbookId, taskid: l.taskId, nim: l.nim, taskname: l.taskName, category: l.category, date: l.timestamp, 
+        workdescription: l.workDescription, hoursspent: l.hoursSpent || 0, grade: l.grade, gradenote: l.notes, googledocurl: l.googleDocUrl
+      });
       Swal.fire({
         toast: true,
         position: 'top-end',
