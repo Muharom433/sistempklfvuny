@@ -72,7 +72,7 @@ export const db = {
       tasks: (tasksData || []).map((t: any) => ({
         ...t,
         taskId: t.id,
-        masterId: t.masterid,
+        masterTaskId: t.masterid,
         assignedNim: t.assignednim,
         taskName: t.taskname,
         dateAssigned: t.dateassigned,
