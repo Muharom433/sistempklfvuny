@@ -2560,10 +2560,23 @@ export default function App() {
                                           <div className="flex gap-2 w-full">
                                             <button 
                                               type="button"
-                                              onClick={() => {
-                                                triggerCallSimulation("Menyinkronkan progres checkpoint harian & mengunggah rekap ke server Sheets...", () => {
-                                                  alert(`Sistem Sinkron: Berhasil merekam kemajuan harian tugas (${pct}%) ke spreadsheet!`);
-                                                });
+                                              onClick={async () => {
+                                                try {
+                                                  await db.runMutation('tasks', 'upsert', {
+                                                    id: task.taskId,
+                                                    masterid: task.masterTaskId || null,
+                                                    assignednim: task.assignedNim,
+                                                    taskname: task.taskName,
+                                                    category: task.category,
+                                                    status: task.status,
+                                                    progress: pct,
+                                                    points: { checked: task.pointsChecked || [], dates: task.checkDates || [] },
+                                                    googledocurl: task.googleDocUrl
+                                                  });
+                                                  Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `✅ Progres ${pct}% berhasil disimpan ke database!`, showConfirmButton: false, timer: 2500 });
+                                                } catch(err: any) {
+                                                  Swal.fire({ icon: 'error', title: 'Gagal Simpan', text: err.message || 'Tidak bisa terhubung ke Supabase' });
+                                                }
                                               }}
                                               className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-all font-bold text-center text-xs"
                                             >
@@ -2590,10 +2603,23 @@ export default function App() {
                                             <div className="flex gap-2">
                                               <button 
                                                 type="button"
-                                                onClick={() => {
-                                                  triggerCallSimulation("Menyinkronkan progres checkpoint harian & mengunggah rekap ke server Sheets...", () => {
-                                                    alert(`Sistem Sinkron: Berhasil merekam kemajuan harian tugas (${pct}%) ke spreadsheet!`);
-                                                  });
+                                                onClick={async () => {
+                                                  try {
+                                                    await db.runMutation('tasks', 'upsert', {
+                                                      id: task.taskId,
+                                                      masterid: task.masterTaskId || null,
+                                                      assignednim: task.assignedNim,
+                                                      taskname: task.taskName,
+                                                      category: task.category,
+                                                      status: task.status,
+                                                      progress: pct,
+                                                      points: { checked: task.pointsChecked || [], dates: task.checkDates || [] },
+                                                      googledocurl: task.googleDocUrl
+                                                    });
+                                                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `✅ Progres ${pct}% berhasil disimpan ke database!`, showConfirmButton: false, timer: 2500 });
+                                                  } catch(err: any) {
+                                                    Swal.fire({ icon: 'error', title: 'Gagal Simpan', text: err.message || 'Tidak bisa terhubung ke Supabase' });
+                                                  }
                                                 }}
                                                 className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-all font-bold text-center text-[10px]"
                                               >
@@ -2838,10 +2864,23 @@ export default function App() {
                                               <div className="flex gap-2 w-full">
                                                 <button 
                                                   type="button"
-                                                  onClick={() => {
-                                                    triggerCallSimulation("Menyinkronkan progres checkpoint harian & mengunggah rekap ke server Sheets...", () => {
-                                                      alert(`Sistem Sinkron: Berhasil merekam kemajuan harian tugas (${pct}%) ke spreadsheet!`);
-                                                    });
+                                                  onClick={async () => {
+                                                    try {
+                                                      await db.runMutation('tasks', 'upsert', {
+                                                        id: task.taskId,
+                                                        masterid: task.masterTaskId || null,
+                                                        assignednim: task.assignedNim,
+                                                        taskname: task.taskName,
+                                                        category: task.category,
+                                                        status: task.status,
+                                                        progress: pct,
+                                                        points: { checked: task.pointsChecked || [], dates: task.checkDates || [] },
+                                                        googledocurl: task.googleDocUrl
+                                                      });
+                                                      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `✅ Progres ${pct}% berhasil disimpan!`, showConfirmButton: false, timer: 2500 });
+                                                    } catch(err: any) {
+                                                      Swal.fire({ icon: 'error', title: 'Gagal Simpan', text: err.message || 'Tidak bisa terhubung ke Supabase' });
+                                                    }
                                                   }}
                                                   className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-all font-bold text-center text-xs"
                                                 >
@@ -2868,10 +2907,23 @@ export default function App() {
                                                 <div className="flex gap-2">
                                                   <button 
                                                     type="button"
-                                                    onClick={() => {
-                                                      triggerCallSimulation("Menyinkronkan progres checkpoint harian & mengunggah rekap ke server Sheets...", () => {
-                                                        alert(`Sistem Sinkron: Berhasil merekam kemajuan harian tugas (${pct}%) ke spreadsheet!`);
-                                                      });
+                                                    onClick={async () => {
+                                                      try {
+                                                        await db.runMutation('tasks', 'upsert', {
+                                                          id: task.taskId,
+                                                          masterid: task.masterTaskId || null,
+                                                          assignednim: task.assignedNim,
+                                                          taskname: task.taskName,
+                                                          category: task.category,
+                                                          status: task.status,
+                                                          progress: pct,
+                                                          points: { checked: task.pointsChecked || [], dates: task.checkDates || [] },
+                                                          googledocurl: task.googleDocUrl
+                                                        });
+                                                        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `✅ Progres ${pct}% berhasil disimpan!`, showConfirmButton: false, timer: 2500 });
+                                                      } catch(err: any) {
+                                                        Swal.fire({ icon: 'error', title: 'Gagal Simpan', text: err.message || 'Tidak bisa terhubung ke Supabase' });
+                                                      }
                                                     }}
                                                     className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-all font-bold text-center text-[10px]"
                                                   >
