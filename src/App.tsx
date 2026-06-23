@@ -1795,7 +1795,8 @@ export default function App() {
       alert("Silakan buat laporan Google Doc terlebih dahulu!");
       return;
     }
-    const validPoints = (taskToComplete.points || []).filter(p => typeof p === 'string' && p.trim() !== '');
+    const rawPoints = Array.isArray(taskToComplete.points) ? taskToComplete.points : (masterTasks.find(m => m.id === taskToComplete.masterTaskId)?.points || []);
+    const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
     const points = validPoints.length > 0 ? validPoints : [
       'Analisis kebutuhan dasar & topologi',
       'Melakukan konfigurasi / pengerjaan teknis spesifik',
@@ -2440,7 +2441,8 @@ export default function App() {
                           ) : (
                             tasks.filter(t => t.assignedNim === activeUser.nim).map(task => {
                               const isCompleted = task.status === 'Completed';
-                              const validPoints = (task.points || []).filter(p => typeof p === 'string' && p.trim() !== '');
+                              const rawPoints = Array.isArray(task.points) ? task.points : (masterTasks.find(m => m.id === task.masterTaskId)?.points || []);
+                              const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
                               const points = validPoints.length > 0 ? validPoints : [
                                 'Analisis kebutuhan dasar & topologi',
                                 'Melakukan konfigurasi / pengerjaan teknis spesifik',
@@ -2746,7 +2748,8 @@ export default function App() {
                               ) : (
                                 tasks.filter(t => t.assignedNim === activeUser.nim).map(task => {
                                   const isCompleted = task.status === 'Completed';
-                                  const validPoints = (task.points || []).filter(p => typeof p === 'string' && p.trim() !== '');
+                                  const rawPoints = Array.isArray(task.points) ? task.points : (masterTasks.find(m => m.id === task.masterTaskId)?.points || []);
+                                  const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
                                   const points = validPoints.length > 0 ? validPoints : [
                                     'Analisis kebutuhan dasar & topologi',
                                     'Melakukan konfigurasi / pengerjaan teknis spesifik',
@@ -3158,7 +3161,8 @@ export default function App() {
                                   ) : (
                                    tasks.map(t => {
                                       const assignee = users.find(u => u.nim === t.assignedNim);
-                                      const validPoints = (t.points || []).filter(p => typeof p === 'string' && p.trim() !== '');
+                                      const rawPoints = Array.isArray(t.points) ? t.points : (masterTasks.find(m => m.id === t.masterTaskId)?.points || []);
+                                      const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
                                       const points = validPoints.length > 0 ? validPoints : [
                                         'Analisis kebutuhan dasar & topologi',
                                         'Melakukan konfigurasi / pengerjaan teknis spesifik',
