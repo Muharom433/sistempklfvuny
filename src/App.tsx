@@ -1734,12 +1734,7 @@ export default function App() {
           workType: taskToDup.workType,
           points: (taskToDup.points || []).filter(p => typeof p === 'string' && p.trim() !== '').length > 0 
                   ? (taskToDup.points || []).filter(p => typeof p === 'string' && p.trim() !== '') 
-                  : [
-                      'Analisis kebutuhan dasar & topologi',
-                      'Melakukan konfigurasi / pengerjaan teknis spesifik',
-                      'Melakukan pengetesan jalur & ketersambungan',
-                      'Pembuatan dokumentasi & draf Google Doc laporan'
-                    ],
+                  : (masterTasks.find(m => m.id === taskToDup.masterTaskId)?.points || []),
           checkDates: taskToDup.checkDates || []
         },
         driveId: destFolderId,
@@ -1797,15 +1792,10 @@ export default function App() {
     }
     const rawPoints = Array.isArray(taskToComplete.points) ? taskToComplete.points : (masterTasks.find(m => m.id === taskToComplete.masterTaskId)?.points || []);
     const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-    const points = validPoints.length > 0 ? validPoints : [
-      'Analisis kebutuhan dasar & topologi',
-      'Melakukan konfigurasi / pengerjaan teknis spesifik',
-      'Melakukan pengetesan jalur & verifikasi ketersambungan',
-      'Pembuatan dokumentasi & draf Google Doc laporan'
-    ];
+    const points = validPoints.length > 0 ? validPoints : [];
     const checkedArr = taskToComplete.pointsChecked || new Array(points.length).fill(false);
     const checkedCount = checkedArr.filter(Boolean).length;
-    const pct = Math.round((checkedCount / points.length) * 100);
+    const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
 
     triggerCallSimulation(`Menyinkronkan rekap akhir tugas ke Sheets database Magang UNY dan memvalidasi URL Laporan Google Docs: ${taskToComplete.googleDocUrl}...`, () => {
       // Force 100% checked upon standard complete or leave checked as is
@@ -2443,15 +2433,10 @@ export default function App() {
                               const isCompleted = task.status === 'Completed';
                               const rawPoints = Array.isArray(task.points) ? task.points : (masterTasks.find(m => m.id === task.masterTaskId)?.points || []);
                               const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                              const points = validPoints.length > 0 ? validPoints : [
-                                'Analisis kebutuhan dasar & topologi',
-                                'Melakukan konfigurasi / pengerjaan teknis spesifik',
-                                'Melakukan pengetesan jalur & ketersambungan',
-                                'Pembuatan dokumentasi & draf Google Doc laporan'
-                              ];
+                              const points = validPoints.length > 0 ? validPoints : [];
                               const checkedArr = task.pointsChecked || new Array(points.length).fill(false);
                               const checkedCount = checkedArr.filter(Boolean).length;
-                              const pct = Math.round((checkedCount / points.length) * 100);
+                              const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
 
                               return (
                                 <div key={task.taskId} className={`p-5 border rounded-3xl flex flex-col justify-between transition-all duration-300 ${isCompleted ? 'border-emerald-200 bg-emerald-50/25 shadow-sm' : 'border-blue-105 bg-[#f7fafe]/70 hover:bg-white shadow-sm'}`}>
@@ -2750,15 +2735,10 @@ export default function App() {
                                   const isCompleted = task.status === 'Completed';
                                   const rawPoints = Array.isArray(task.points) ? task.points : (masterTasks.find(m => m.id === task.masterTaskId)?.points || []);
                                   const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                                  const points = validPoints.length > 0 ? validPoints : [
-                                    'Analisis kebutuhan dasar & topologi',
-                                    'Melakukan konfigurasi / pengerjaan teknis spesifik',
-                                    'Melakukan pengetesan jalur & ketersambungan',
-                                    'Pembuatan dokumentasi & draf Google Doc laporan'
-                                  ];
+                                  const points = validPoints.length > 0 ? validPoints : [];
                                   const checkedArr = task.pointsChecked || new Array(points.length).fill(false);
                                   const checkedCount = checkedArr.filter(Boolean).length;
-                                  const pct = Math.round((checkedCount / points.length) * 100);
+                                  const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
 
                                   return (
                                     <div key={task.taskId} className={`p-5 border rounded-3xl flex flex-col justify-between transition-all duration-300 ${isCompleted ? 'border-emerald-200 bg-emerald-50/25 shadow-sm' : 'border-blue-105 bg-[#f7fafe]/70 hover:bg-white shadow-sm'}`}>
@@ -3163,15 +3143,10 @@ export default function App() {
                                       const assignee = users.find(u => u.nim === t.assignedNim);
                                       const rawPoints = Array.isArray(t.points) ? t.points : (masterTasks.find(m => m.id === t.masterTaskId)?.points || []);
                                       const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
-                                      const points = validPoints.length > 0 ? validPoints : [
-                                        'Analisis kebutuhan dasar & topologi',
-                                        'Melakukan konfigurasi / pengerjaan teknis spesifik',
-                                        'Melakukan pengetesan jalur & ketersambungan',
-                                        'Pembuatan dokumentasi & draf Google Doc laporan'
-                                      ];
+                                      const points = validPoints.length > 0 ? validPoints : [];
                                       const checkedArr = t.pointsChecked || new Array(points.length).fill(false);
                                       const checkedCount = checkedArr.filter(Boolean).length;
-                                      const pct = Math.round((checkedCount / points.length) * 100);
+                                      const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
 
                                       return (
                                         <tr key={t.taskId} className="border-b border-slate-100 text-[11px] hover:bg-slate-50/50">
@@ -3463,15 +3438,12 @@ export default function App() {
                               ) : (
                                 tasks.map(t => {
                                   const assignee = users.find(u => u.nim === t.assignedNim);
-                                  const points = t.points || [
-                                    'Analisis kebutuhan dasar & topologi',
-                                    'Melakukan konfigurasi / pengerjaan teknis spesifik',
-                                    'Melakukan pengetesan jalur & verifikasi ketersambungan',
-                                    'Pembuatan dokumentasi & draf Google Doc laporan'
-                                  ];
+                                  const rawPoints = Array.isArray(t.points) ? t.points : (masterTasks.find(m => m.id === t.masterTaskId)?.points || []);
+                                  const validPoints = rawPoints.filter((p: any) => typeof p === 'string' && p.trim() !== '');
+                                  const points = validPoints.length > 0 ? validPoints : [];
                                   const checkedArr = t.pointsChecked || new Array(points.length).fill(false);
                                   const checkedCount = checkedArr.filter(Boolean).length;
-                                  const pct = Math.round((checkedCount / points.length) * 100);
+                                  const pct = points.length === 0 ? 0 : Math.round((checkedCount / points.length) * 100);
 
                                   return (
                                     <tr key={t.taskId} className="border-b border-slate-100 text-[11px] hover:bg-slate-50/50">
