@@ -472,9 +472,13 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
         // --- 1. GENERATE PIE CHART ---
         if (studentLogs && studentLogs.length > 0) {
           const categoryCounts = {};
+          const seenTasks = {};
           studentLogs.forEach(function(log) {
-            const cat = log.category || 'Lain-lain';
-            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+            if (!seenTasks[log.name]) {
+              seenTasks[log.name] = true;
+              const cat = log.category || 'Lain-lain';
+              categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+            }
           });
           
           let dataBuilder = Charts.newDataTable()

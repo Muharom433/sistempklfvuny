@@ -294,6 +294,7 @@ CREATE TABLE jobdesks (
 CREATE TABLE master_tasks (
   id VARCHAR PRIMARY KEY,
   title VARCHAR NOT NULL,
+  category VARCHAR,
   description TEXT,
   points JSONB, 
   workType VARCHAR NOT NULL,
@@ -306,6 +307,7 @@ CREATE TABLE tasks (
   masterId VARCHAR REFERENCES master_tasks(id) ON DELETE CASCADE,
   assignedNim VARCHAR REFERENCES users(nim) ON DELETE CASCADE,
   taskName VARCHAR NOT NULL,
+  category VARCHAR,
   dateAssigned VARCHAR NOT NULL,
   status VARCHAR NOT NULL,
   progress INTEGER DEFAULT 0,
@@ -321,6 +323,7 @@ CREATE TABLE logbooks (
   taskId VARCHAR REFERENCES tasks(id) ON DELETE CASCADE,
   nim VARCHAR REFERENCES users(nim) ON DELETE CASCADE,
   taskName VARCHAR NOT NULL,
+  category VARCHAR,
   date VARCHAR NOT NULL,
   workDescription TEXT NOT NULL,
   hoursSpent INTEGER NOT NULL,
@@ -656,8 +659,13 @@ export default function App() {
   }, [jobdesks]);
 
   // Category management state
-  const [categories, setCategories] = useState<string[]>(['Jaringan', 'Website', 'Admin']);
+  const [categories, setCategories] = useState<string[]>(() => {
+    if (hasSupabase) return []; // Will be loaded from Supabase
+    return ['Jaringan', 'Website', 'Admin'];
+  });
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryOld, setEditingCategoryOld] = useState<string | null>(null);
+  const [editingCategoryNew, setEditingCategoryNew] = useState('');
 
   // --- SIMULATOR RUNTIME STATE ---
   const [activeUser, setActiveUser] = useState<User | null>(() => {
@@ -763,7 +771,13 @@ export default function App() {
         
         setLogbooks(data.logbooks as Logbook[]);
         setJobdesks(data.jobdesks);
-        setCategories(data.categories);
+        // Baca kategori dari app_state (lebih reliable dari tabel categories)
+        if (data.categoriesData && Array.isArray(data.categoriesData) && data.categoriesData.length > 0) {
+          setCategories(data.categoriesData);
+        } else if (data.categories && data.categories.length > 0) {
+          // Fallback: dari tabel categories lama
+          setCategories(data.categories);
+        }
         
         if(data.properties) {
           const parsedProps = typeof data.properties === 'string' ? JSON.parse(data.properties) : data.properties;
@@ -804,18 +818,23 @@ export default function App() {
           rolename: roleName, description
         })));
         if (masterTasks.length) await db.runMutation('master_tasks', 'upsert', masterTasks.map(m => ({
-          id: m.id, title: m.title, description: m.description, points: m.points, worktype: m.workType, targetrole: m.targetRole
+          id: m.id, title: m.title, category: m.category, description: m.description, points: m.points, worktype: m.workType, targetrole: m.targetRole
         })));
         if (tasks.length) await db.runMutation('tasks', 'upsert', tasks.map(t => ({
-          id: t.taskId, masterid: t.masterTaskId || null, assignednim: t.assignedNim, taskname: t.taskName, 
+          id: t.taskId, masterid: t.masterTaskId || null, assignednim: t.assignedNim, taskname: t.taskName, category: t.category,
           dateassigned: (t as any).dateAssigned || new Date().toISOString(), status: t.status, progress: (t as any).progress || 0, completeddesc: (t as any).completedDesc || '-', 
           completeddate: (t as any).completedDate || '-', googledocurl: t.googleDocUrl, points: { checked: t.pointsChecked, dates: t.checkDates }
         })));
         if (logbooks.length) await db.runMutation('logbooks', 'upsert', logbooks.map(l => ({
-          logbookid: l.logbookId, taskid: l.taskId, nim: l.nim, taskname: l.taskName, date: l.timestamp, 
+          logbookid: l.logbookId, taskid: l.taskId, nim: l.nim, taskname: l.taskName, category: l.category, date: l.timestamp, 
           workdescription: l.workDescription, hoursspent: l.hoursSpent || 0, grade: l.grade, gradenote: l.notes, googledocurl: l.googleDocUrl
         })));
-        if (categories.length) await db.runMutation('categories', 'upsert', categories.map(name => ({name})));
+        if (categories.length) {
+          // Simpan kategori ke app_state (lebih reliable dari tabel categories)
+          await db.runMutation('app_state', 'upsert', { id: 'categoriesData', data: categories });
+          // Juga coba sync ke tabel categories (best effort)
+          try { await db.runMutation('categories', 'upsert', categories.map(name => ({name}))); } catch(_) {}
+        }
         await db.runMutation('app_state', 'upsert', { id: 'propertiesData', data: propertiesData });
         
         if (users.length) {
@@ -1010,14 +1029,14 @@ export default function App() {
   };
 
   const getCategoryPercentages = (studentNim: string) => {
-    const studentLogs = logbooks.filter(l => l.nim === studentNim);
-    const total = studentLogs.length;
+    // Ambil persentase kategori berdasarkan jumlah Task yang berstatus Completed
+    const studentTasks = tasks.filter(t => t.assignedNim === studentNim && t.status === 'Completed');
+    const total = studentTasks.length;
     if (total === 0) return [];
 
     const counts: Record<string, number> = {};
-    studentLogs.forEach(l => {
-      const task = tasks.find(t => t.taskId === l.taskId || t.taskName === l.taskName);
-      const cat = task?.category || l.category || 'Lainnya';
+    studentTasks.forEach(t => {
+      const cat = t.category || 'Lainnya';
       counts[cat] = (counts[cat] || 0) + 1;
     });
 
@@ -1827,20 +1846,43 @@ export default function App() {
     });
   };
 
-  const handleSimulatedGrading = (e: React.FormEvent) => {
+  const handleSimulatedGrading = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLogbookToGrade) return;
 
-    triggerCallSimulation("Menyimpan hasil audit penilaian...", () => {
-      setLogbooks(logbooks.map(l => l.logbookId === selectedLogbookToGrade.logbookId 
-        ? { ...l, grade: gradeInput, notes: gradeNotes } 
-        : l
-      ));
-      setSelectedLogbookToGrade(null);
-      setGradeInput('');
-      setGradeNotes('');
-      alert("Penilaian berhasil disimpan!");
-    });
+    const updatedLogbook = { ...selectedLogbookToGrade, grade: gradeInput, notes: gradeNotes };
+    
+    // Update state lokal dulu
+    setLogbooks(logbooks.map(l => l.logbookId === selectedLogbookToGrade.logbookId 
+      ? updatedLogbook
+      : l
+    ));
+    setSelectedLogbookToGrade(null);
+    setGradeInput('');
+    setGradeNotes('');
+
+    // Langsung push nilai ke Supabase
+    try {
+      await db.runMutation('logbooks', 'update',
+        { grade: gradeInput, gradenote: gradeNotes },
+        { column: 'logbookid', value: selectedLogbookToGrade.logbookId }
+      );
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `Nilai ${gradeInput} berhasil disimpan ke database!`,
+        showConfirmButton: false,
+        timer: 3000
+      });
+    } catch (err: any) {
+      console.error('[Supabase] Gagal simpan nilai:', err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Simpan Nilai',
+        text: `Nilai sudah tersimpan di lokal tapi gagal sync ke server: ${err.message || err}`
+      });
+    }
   };
 
   const triggerPDFGenerationSimulation = (studentNim: string) => {
@@ -1858,9 +1900,11 @@ export default function App() {
       });
       const calcGradeStr = count > 0 ? (sum / count).toFixed(1).replace(/\.0$/, '') : '0';
 
-      const logs = studentLogsForPrint.map(l => ({
+      const logs = studentLogsForPrint.map(l => {
+        const relatedTask = tasks.find(t => t.taskId === l.taskId || t.taskName === l.taskName);
+        return {
           name: l.taskName,
-          category: l.category,
+          category: relatedTask?.category || l.category || 'Lain-lain',
           wordDesc: l.workDescription,
           file: l.fileUrl,
           date: l.timestamp.split(' ')[0],
@@ -1868,7 +1912,8 @@ export default function App() {
           workType: l.workType || 'Individu',
           googleDocUrl: l.googleDocUrl || `https://docs.google.com/document/d/1Doc_report_sim_${l.logbookId}/edit`,
           googleDocTitle: l.googleDocTitle || `Laporan Sim_Doc_${l.logbookId}`
-        }));
+        };
+      });
 
       setPrintDocument({
         studentName: student.name,
@@ -3683,15 +3728,24 @@ export default function App() {
                             />
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 const name = newCategoryName.trim();
                                 if (!name) return;
                                 if (categories.some(c => (c || '').toLowerCase() === (name || '').toLowerCase())) {
-                                  alert("Kategori tersebut sudah terdaftar!");
+                                  Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Kategori tersebut sudah terdaftar!', showConfirmButton: false, timer: 2500 });
                                   return;
                                 }
-                                setCategories([...categories, name]);
+                                const updated = [...categories, name];
+                                setCategories(updated);
                                 setNewCategoryName('');
+                                // Langsung simpan ke Supabase
+                                try {
+                                  await db.runMutation('categories', 'upsert', [{ name }]);
+                                  Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Kategori "${name}" berhasil ditambahkan!`, showConfirmButton: false, timer: 2500 });
+                                } catch (e: any) {
+                                  console.error('Gagal menyimpan kategori ke Supabase:', e);
+                                  Swal.fire({ icon: 'error', title: 'Gagal Simpan', text: `Kategori sudah ditambahkan di lokal, tapi gagal sync ke server: ${e.message || e}` });
+                                }
                               }}
                               className="px-3 py-2 bg-[#003a70] hover:bg-[#002244] text-white rounded-lg text-xs font-bold shrink-0"
                             >
@@ -3699,14 +3753,99 @@ export default function App() {
                             </button>
                           </div>
 
-                          <div className="space-y-1.5 max-h-[155px] overflow-y-auto pr-1">
+                          <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                            {categories.length === 0 && (
+                              <p className="text-[10px] text-slate-400 italic text-center py-3">Belum ada kategori. Tambahkan kategori baru di atas.</p>
+                            )}
                             {categories.map((cat) => {
                               const isSystemCategory = ['jaringan', 'website', 'admin'].includes((cat || '').toLowerCase());
+                              const isEditingThis = editingCategoryOld === cat;
                               return (
-                                <div key={cat} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-xs text-slate-700">
-                                  <span className="font-extrabold uppercase tracking-wide text-[10px]">{cat}</span>
-                                  <div className="flex items-center gap-2">
-                                    {isSystemCategory && <span className="text-[8px] text-slate-400 font-mono hidden sm:inline">Sistem</span>}
+                                <div key={cat} className={`flex items-center justify-between p-2 rounded-lg border text-xs transition-all ${
+                                  isEditingThis ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-100 text-slate-700'
+                                }`}>
+                                  {isEditingThis ? (
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={editingCategoryNew}
+                                      onChange={e => setEditingCategoryNew(e.target.value)}
+                                      onKeyDown={async (e) => {
+                                        if (e.key === 'Enter') {
+                                          const newName = editingCategoryNew.trim();
+                                          if (!newName || newName === cat) { setEditingCategoryOld(null); return; }
+                                          if (categories.some(c => c !== cat && (c || '').toLowerCase() === newName.toLowerCase())) {
+                                            Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Nama kategori sudah ada!', showConfirmButton: false, timer: 2000 });
+                                            return;
+                                          }
+                                          // Update state
+                                          setCategories(prev => prev.map(c => c === cat ? newName : c));
+                                          setMasterTasks(prev => prev.map(m => m.category === cat ? { ...m, category: newName } : m));
+                                          setTasks(prev => prev.map(t => t.category === cat ? { ...t, category: newName } : t));
+                                          setEditingCategoryOld(null);
+                                          // Langsung sync ke Supabase
+                                          try {
+                                            await db.runMutation('categories', 'delete', null, { column: 'name', value: cat });
+                                            await db.runMutation('categories', 'upsert', [{ name: newName }]);
+                                            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Kategori diubah menjadi "${newName}"`, showConfirmButton: false, timer: 2500 });
+                                          } catch (err: any) {
+                                            console.error('Gagal update kategori di Supabase:', err);
+                                            Swal.fire({ icon: 'error', title: 'Gagal Update', text: `Perubahan disimpan di lokal, tapi gagal sync ke server: ${err.message || err}` });
+                                          }
+                                        } else if (e.key === 'Escape') {
+                                          setEditingCategoryOld(null);
+                                        }
+                                      }}
+                                      className="flex-1 text-xs px-2 py-0.5 border border-amber-300 rounded outline-none bg-white mr-2"
+                                      placeholder="Nama baru..."
+                                    />
+                                  ) : (
+                                    <span className="font-extrabold uppercase tracking-wide text-[10px]">{cat}</span>
+                                  )}
+                                  <div className="flex items-center gap-1">
+                                    {isSystemCategory && !isEditingThis && <span className="text-[8px] text-slate-400 font-mono hidden sm:inline">Sistem</span>}
+                                    {isEditingThis ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            const newName = editingCategoryNew.trim();
+                                            if (!newName || newName === cat) { setEditingCategoryOld(null); return; }
+                                            if (categories.some(c => c !== cat && (c || '').toLowerCase() === newName.toLowerCase())) {
+                                              Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Nama kategori sudah ada!', showConfirmButton: false, timer: 2000 });
+                                              return;
+                                            }
+                                            setCategories(prev => prev.map(c => c === cat ? newName : c));
+                                            setMasterTasks(prev => prev.map(m => m.category === cat ? { ...m, category: newName } : m));
+                                            setTasks(prev => prev.map(t => t.category === cat ? { ...t, category: newName } : t));
+                                            setEditingCategoryOld(null);
+                                            try {
+                                              await db.runMutation('categories', 'delete', null, { column: 'name', value: cat });
+                                              await db.runMutation('categories', 'upsert', [{ name: newName }]);
+                                              Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Kategori diubah menjadi "${newName}"`, showConfirmButton: false, timer: 2500 });
+                                            } catch (err: any) {
+                                              Swal.fire({ icon: 'error', title: 'Gagal Update', text: `${err.message || err}` });
+                                            }
+                                          }}
+                                          className="px-2 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold"
+                                        >Simpan</button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingCategoryOld(null)}
+                                          className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-[10px] font-bold"
+                                        >Batal</button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => { setEditingCategoryOld(cat); setEditingCategoryNew(cat); }}
+                                        className="p-1 hover:bg-amber-50 text-slate-400 hover:text-amber-500 rounded transition-all"
+                                        title="Edit Nama Kategori"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                    {!isEditingThis && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -3723,35 +3862,18 @@ export default function App() {
                                           cancelButtonText: 'Batal'
                                         }).then((result) => {
                                           if (result.isConfirmed) {
-                                            // Update tasks/master tasks using this category to remaining fallback
                                             const fallback = categories.find(c => c !== cat) || 'Jaringan';
-                                            
                                             setCategories(categories.filter(c => c !== cat));
                                             setMasterTasks(prev => prev.map(m => m.category === cat ? { ...m, category: fallback } : m));
                                             setTasks(prev => prev.map(t => t.category === cat ? { ...t, category: fallback } : t));
-
-                                            // Sync updates to server to prevent missing categories errors
                                             db.runMutation('master_tasks', 'update', { category: fallback }, { column: 'category', value: cat }).catch(() => {});
                                             db.runMutation('tasks', 'update', { category: fallback }, { column: 'category', value: cat }).catch(() => {});
-
                                             db.runMutation('categories', 'delete', null, { column: 'name', value: cat })
                                               .then(() => {
-                                                Swal.fire({
-                                                  toast: true,
-                                                  position: 'top-end',
-                                                  icon: 'success',
-                                                  title: `Sukses menghapus kategori "${cat}".`,
-                                                  showConfirmButton: false,
-                                                  timer: 3000
-                                                });
+                                                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Kategori "${cat}" berhasil dihapus.`, showConfirmButton: false, timer: 3000 });
                                               })
                                               .catch(e => {
-                                                console.error("Gagal menghapus kategori dari Supabase:", e);
-                                                Swal.fire({
-                                                  icon: 'error',
-                                                  title: 'Database Error',
-                                                  text: `Gagal menghapus kategori dari server: ${e.message || e}`
-                                                });
+                                                Swal.fire({ icon: 'error', title: 'Database Error', text: `Gagal menghapus dari server: ${e.message || e}` });
                                               });
                                           }
                                         });
@@ -3761,6 +3883,7 @@ export default function App() {
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
+                                    )}
                                   </div>
                                 </div>
                               );
