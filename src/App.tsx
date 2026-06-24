@@ -29,6 +29,12 @@ import {
   AlertTriangle,
   Send
 } from 'lucide-react';
+
+declare global {
+  interface Window {
+    html2pdf: any;
+  }
+}
 import { motion, AnimatePresence } from 'motion/react';
 import Select from 'react-select';
 import Swal from 'sweetalert2';
@@ -948,6 +954,10 @@ export default function App() {
   const [gradeInput, setGradeInput] = useState('');
   const [gradeNotes, setGradeNotes] = useState('');
 
+  // Logbook Filter State
+  const [logbookFilterNim, setLogbookFilterNim] = useState<string>('all');
+  const [logbookFilterNilai, setLogbookFilterNilai] = useState<'all' | 'dinilai' | 'belum'>('all');
+
   // User Credential/Data Editing Modal
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editUserNim, setEditUserNim] = useState('');
@@ -1034,14 +1044,14 @@ export default function App() {
     return dateStr;
   };
 
-  const getCategoryPercentages = (studentNim: string) => {
-    // Ambil persentase kategori berdasarkan jumlah Task yang berstatus Completed
-    const studentTasks = tasks.filter(t => t.assignedNim === studentNim && t.status === 'Completed');
-    const total = studentTasks.length;
+  const getCategoryPercentages = (studentNim: string, sourceLogs?: any[]) => {
+    // Ambil persentase kategori berdasarkan jumlah pekerjaan (logbooks) alih-alih Tasks (yang mendeduplikasi logbook dengan task yang sama)
+    const logsToCount = sourceLogs || logbooks.filter(l => l.nim === studentNim);
+    const total = logsToCount.length;
     if (total === 0) return [];
 
     const counts: Record<string, number> = {};
-    studentTasks.forEach(t => {
+    logsToCount.forEach(t => {
       const cat = t.category || 'Lainnya';
       counts[cat] = (counts[cat] || 0) + 1;
     });
@@ -2022,7 +2032,7 @@ export default function App() {
                 <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   UNY IT Internship Workspace <span className="text-[10px] bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-mono font-bold">Apps Script 5.0</span>
                 </h1>
-                <p className="text-xs text-slate-500 font-medium">Departemen Jaringan Vokasi UNY • Developer Station & Simulator</p>
+                <p className="text-xs text-slate-500 font-medium">Fakultas Vokasi Universitas Negeri Yogyakarta • Developer Station & Simulator</p>
               </div>
             </div>
             
@@ -2193,7 +2203,7 @@ export default function App() {
                 <header className="bg-gradient-to-r from-[#003a70] to-[#002244] text-white border-b-4 border-amber-400 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
                   <div className="flex items-center gap-2">
                     <span className="bg-amber-400 text-slate-950 font-extrabold text-xs px-2.5 py-1 rounded tracking-wider">FV-UNY</span>
-                    <h2 className="text-md font-bold tracking-tight">Portal Magang IT Network & Sistem Logbook</h2>
+                    <h2 className="text-md font-bold tracking-tight">Portal Magang Fakultas Vokasi UNY & Sistem Logbook</h2>
                   </div>
                   
                   {activeUser && (
@@ -2232,7 +2242,7 @@ export default function App() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <h3 className="text-lg font-bold mb-0">Halo, {activeUser.name}!</h3>
-                          <p className="text-xs text-sky-200 mb-0">Selamat berkontribusi di Departemen IT Network Vokasi UNY</p>
+                          <p className="text-xs text-sky-200 mb-0">Selamat berkontribusi di Fakultas Vokasi Universitas Negeri Yogyakarta</p>
                         </div>
                         <div className="text-xs text-left sm:text-right bg-sky-950/50 p-2.5 rounded-xl border border-sky-800/30">
                           <div>NIM Aktif: <strong className="text-amber-300">{activeUser.nim}</strong></div>
@@ -3229,39 +3239,90 @@ export default function App() {
                       {/* Sub-Tabs Grid or Layout for PIC panels */}
                       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                         
-                        {/* 1. Logbooks finished list & certificate trigger */}
+                        {/* 1. Logbooks finished list (no Cetak PDF here - moved to user card) */}
                         <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
                           <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
                             <h4 className="font-extrabold text-[#003a70] text-xs uppercase tracking-wider mb-0">Rekapitulasi Logbook Masuk</h4>
                             <span className="text-[10px] bg-[#003a70] text-white font-bold px-2 py-0.5 rounded-md">Sheets Logbooks</span>
                           </div>
 
+                          {/* Filter Bar */}
+                          <div className="flex flex-wrap gap-2 items-center">
+                            {/* Filter by User */}
+                            <div className="flex-1 min-w-[160px]">
+                              <select
+                                id="logbook-filter-user"
+                                value={logbookFilterNim}
+                                onChange={e => setLogbookFilterNim(e.target.value)}
+                                className="w-full text-[10px] px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 font-semibold outline-none focus:border-[#003a70] focus:ring-1 focus:ring-[#003a70]/10 transition-all"
+                              >
+                                <option value="all">👤 Semua Pengguna</option>
+                                {users.filter(u => u.role !== 'PIC').map(u => (
+                                  <option key={u.nim} value={u.nim}>{u.name} ({u.nim})</option>
+                                ))}
+                              </select>
+                            </div>
+                            {/* Filter by Nilai Status */}
+                            <div className="flex gap-1">
+                              {(['all', 'dinilai', 'belum'] as const).map(f => (
+                                <button
+                                  key={f}
+                                  onClick={() => setLogbookFilterNilai(f)}
+                                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                                    logbookFilterNilai === f
+                                      ? f === 'dinilai' ? 'bg-emerald-600 text-white border-emerald-600' : f === 'belum' ? 'bg-amber-500 text-white border-amber-500' : 'bg-[#003a70] text-white border-[#003a70]'
+                                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                  }`}
+                                >
+                                  {f === 'all' ? 'Semua' : f === 'dinilai' ? '✓ Sudah Dinilai' : '⏳ Belum Dinilai'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
                           <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs border-collapse">
                               <thead>
                                 <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-                                  <th className="pb-3">Siswa (NIM)</th>
+                                  <th className="pb-3">Siswa (NIS)</th>
                                   <th className="pb-3">Tugas & Deskripsi</th>
                                   <th className="pb-3">File Bukti</th>
                                   <th className="pb-3">Audit Nilai</th>
-                                  <th className="pb-3 text-right">Action SKEK</th>
+                                  <th className="pb-3 text-right">Aksi</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {logbooks.length === 0 ? (
-                                  <tr>
-                                    <td colSpan={5} className="py-8 text-center text-slate-400 italic font-medium">Belum ada logbook masuk dari para anggota magang.</td>
-                                  </tr>
-                                ) : (
-                                  logbooks.map(log => (
+                                {(() => {
+                                  const filtered = logbooks.filter(log => {
+                                    if (logbookFilterNim !== 'all' && log.nim !== logbookFilterNim) return false;
+                                    if (logbookFilterNilai === 'dinilai' && !log.grade) return false;
+                                    if (logbookFilterNilai === 'belum' && !!log.grade) return false;
+                                    return true;
+                                  });
+                                  if (filtered.length === 0) return (
+                                    <tr>
+                                      <td colSpan={5} className="py-8 text-center text-slate-400 italic font-medium">
+                                        {logbooks.length === 0 ? 'Belum ada logbook masuk dari para anggota magang.' : 'Tidak ada logbook yang sesuai filter.'}
+                                      </td>
+                                    </tr>
+                                  );
+                                  return filtered.map(log => (
                                     <tr key={log.logbookId} className="border-b border-slate-100 text-[11px] hover:bg-slate-50/50">
                                       <td className="py-3">
                                         <div className="font-bold text-slate-800">{log.studentName}</div>
-                                        <div className="text-[10px] text-slate-400 font-mono">NIM {log.nim}</div>
+                                        <div className="text-[10px] text-slate-400 font-mono">NIS {log.nim}</div>
                                       </td>
                                       <td className="py-3">
                                         <div className="font-semibold text-slate-700">{log.taskName}</div>
                                         <p className="text-[10px] text-slate-400 max-w-[200px] truncate">{log.workDescription}</p>
+                                        {/* Task type badge */}
+                                        <span className={`mt-1 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                          log.workType === 'Kelompok'
+                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        }`}>
+                                          {log.workType === 'Kelompok' ? '👥 Kelompok' : '👤 Individu'}
+                                        </span>
                                       </td>
                                       <td className="py-3">
                                         <a href={log.googleDocUrl || log.fileUrl || '#'} target="_blank" rel="noreferrer" className="text-[#003a70] underline hover:text-[#002244] font-bold">
@@ -3287,15 +3348,8 @@ export default function App() {
                                       <td className="py-3 text-right">
                                         <div className="flex items-center justify-end gap-1.5">
                                           <button 
-                                            onClick={() => triggerPDFGenerationSimulation(log.nim)}
-                                            className="px-2.5 py-1 bg-[#003a70] hover:bg-[#002244] rounded-md text-white font-bold text-[10px] tracking-wide transition-all"
-                                            title="Cetak PDF Sertifikat/Rekap"
-                                          >
-                                            Cetak PDF
-                                          </button>
-                                          <button 
                                             onClick={() => handleDeleteLogbook(log.logbookId, log.studentName, log.taskName)}
-                                            className="p-1.5 bg-red-50 hover:bg-red-150 text-red-650 rounded-md border border-red-200 transition-all cursor-pointer"
+                                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-md border border-red-200 transition-all cursor-pointer"
                                             title="Hapus Catatan Logbook"
                                           >
                                             <Trash2 className="w-3.5 h-3.5" />
@@ -3303,8 +3357,8 @@ export default function App() {
                                         </div>
                                       </td>
                                     </tr>
-                                  ))
-                                )}
+                                  ));
+                                })()}
                               </tbody>
                             </table>
                           </div>
@@ -3427,6 +3481,21 @@ export default function App() {
                                       />
                                     </div>
                                   </div>
+
+                                  {/* Cetak PDF per User — only for non-PIC users */}
+                                  {u.role !== 'PIC' && (
+                                    <div className="border-t border-dashed border-slate-200/60 pt-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => triggerPDFGenerationSimulation(u.nim)}
+                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#003a70] hover:bg-[#002244] text-white rounded-lg text-[10px] font-bold tracking-wide transition-all shadow-sm"
+                                        title={`Cetak Sertifikat & Portofolio PDF untuk ${u.name}`}
+                                      >
+                                        <FileText className="w-3 h-3" />
+                                        Cetak PDF Sertifikat
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -5457,9 +5526,10 @@ reader.readAsDataURL(file);`}
                 
                 <div className="flex justify-between items-center bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8 mt-6">
                     <div className="space-y-2 text-sm text-slate-700">
-                       <div><strong>Nama Mahasiswa:</strong> <span className="font-bold text-slate-900">{printDocument.studentName}</span></div>
-                       <div><strong>Nomor KTM / NIM:</strong> <span className="font-mono">{printDocument.studentNim}</span></div>
-                       <div><strong>Periode Praktik:</strong> <span className="font-bold">{printDocument.periode || 3} Bulan</span> ({formatIdDate(printDocument.tanggalMulai)} s/d {formatIdDate(printDocument.tanggalSelesai)})</div>
+                       <div><strong>Nama:</strong> <span className="font-bold text-slate-900">{printDocument.studentName}</span></div>
+                       <div><strong>NIS:</strong> <span className="font-mono">{printDocument.studentNim}</span></div>
+                       <div><strong>Peran:</strong> <span className="font-bold">{printDocument.role || '-'}</span></div>
+                       <div><strong>Periode:</strong> <span className="font-bold">{printDocument.periode || 3} Bulan</span> ({formatIdDate(printDocument.tanggalMulai)} s/d {formatIdDate(printDocument.tanggalSelesai)})</div>
                     </div>
                     <div className="text-right border-l-2 border-slate-200 pl-6 space-y-1">
                        <div className="text-xs uppercase text-slate-500 font-bold tracking-wider">Nilai Akhir (Predikat)</div>
@@ -5583,9 +5653,10 @@ reader.readAsDataURL(file);`}
 
                   <div className="text-xs space-y-1 text-slate-600 mb-4 bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div className="space-y-0.5">
-                      <div><strong>Nama Mahasiswa:</strong> <span className="font-bold text-slate-800">{printDocument.studentName}</span></div>
-                      <div><strong>Nomor KTM / NIM:</strong> <span className="font-mono font-semibold text-slate-700">{printDocument.studentNim}</span></div>
-                      <div><strong>Periode Magang:</strong> <span className="font-bold text-sky-950">{printDocument.periode || 3} Bulan</span> ({formatIdDate(printDocument.tanggalMulai)} s/d {formatIdDate(printDocument.tanggalSelesai)})</div>
+                      <div><strong>Nama:</strong> <span className="font-bold text-slate-800">{printDocument.studentName}</span></div>
+                      <div><strong>NIS:</strong> <span className="font-mono font-semibold text-slate-700">{printDocument.studentNim}</span></div>
+                      <div><strong>Peran:</strong> <span className="font-bold text-slate-700">{printDocument.role || '-'}</span></div>
+                      <div><strong>Periode:</strong> <span className="font-bold text-sky-950">{printDocument.periode || 3} Bulan</span> ({formatIdDate(printDocument.tanggalMulai)} s/d {formatIdDate(printDocument.tanggalSelesai)})</div>
                     </div>
                     <div className="p-2 bg-emerald-50 border border-emerald-150 rounded-lg text-right font-sans shrink-0">
                       <div className="text-[8px] uppercase font-bold text-emerald-800 leading-none">Rerata Nilai</div>
@@ -5597,7 +5668,7 @@ reader.readAsDataURL(file);`}
                   {/* Dynamic Category Donut Chart for professional competencies */}
                   <div className="mb-4">
                     {(() => {
-                      const distribution = getCategoryPercentages(printDocument.studentNim);
+                      const distribution = getCategoryPercentages(printDocument.studentNim, printDocument.logs);
                       const colors = ['#003a70', '#eab308', '#10b981', '#a855f7', '#ec4899', '#3b82f6'];
                       let cumulativePercent = 0;
                       return (
@@ -5629,8 +5700,10 @@ reader.readAsDataURL(file);`}
                                 })}
                               </svg>
                               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none">Kompeten</span>
-                                <span className="text-[10px] font-extrabold text-slate-800 leading-none mt-0.5">{distribution[0]?.percentage}%</span>
+                                <span className="text-[6px] font-bold text-slate-400 uppercase tracking-widest leading-none">Dominan</span>
+                                <span className="text-[8px] font-extrabold text-slate-800 leading-none mt-0.5 px-1 text-center truncate max-w-[50px]" title={distribution[0]?.category}>
+                                  {distribution[0]?.category}
+                                </span>
                               </div>
                             </div>
                           ) : (
@@ -5722,22 +5795,90 @@ reader.readAsDataURL(file);`}
 
             </div>
 
-            {/* Email send mock notification block */}
-            <div className="p-4 bg-[#003a70] text-white flex flex-col sm:flex-row items-center justify-between px-6 border-t border-[#002244] gap-4">
-              <div className="flex items-center gap-2 text-xs font-mono">
-                <Mail className="w-4 h-4 text-sky-400" />
-                <span>Siap dikirimkan sebagai lampiran PDF ke email: <strong>{printDocument.email}</strong></span>
+            {/* Email send block - info from/to + actual send via GAS */}
+            <div className="p-4 bg-[#003a70] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 border-t border-[#002244] gap-4">
+              <div className="flex flex-col gap-1 text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span className="text-sky-300 font-bold">From:</span>
+                  <span className="text-white">{activeUser?.email || 'pic@vokasi.uny.ac.id'}</span>
+                  <span className="text-sky-500 text-[9px] bg-sky-900/50 px-1.5 rounded font-bold ml-1">PIC</span>
+                </div>
+                <div className="flex items-center gap-2 ml-6">
+                  <span className="text-amber-300 font-bold">To:</span>
+                  <span className="text-white font-bold">{printDocument.email}</span>
+                  <span className="text-amber-500 text-[9px] bg-amber-900/40 px-1.5 rounded font-bold ml-1">SISWA</span>
+                </div>
+                <div className="ml-6 text-[9px] text-sky-400 italic">📎 Lampiran: Sertifikat.pdf + Portofolio Rekapitulasi.pdf</div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <button 
                   type="button"
-                  onClick={() => {
-                    customAlert(`Aksi berhasil disimulasikan: Berkas Sertifikat.pdf dan Portofolio (Desain Estetik) telah dikirim ke alamat email ${printDocument.email}`, 'success', 'Simulasi Kirim Email');
+                  disabled={isSimulatingCall}
+                  onClick={async () => {
+                    if (!printDocument) return;
+                    const gasUrl = import.meta.env.VITE_GAS_WEB_APP_URL;
+                    if (!gasUrl) {
+                      customAlert('Mohon maaf, URL Google Apps Script belum dikonfigurasi!\n\nTambahkan VITE_GAS_WEB_APP_URL di file .env lalu deploy ulang.', 'error', 'Konfigurasi GAS Belum Ada');
+                      return;
+                    }
+                    if (!printDocument.email) {
+                      customAlert('Email siswa tidak tersedia! Pastikan email sudah diisi di data pengguna.', 'error', 'Email Siswa Kosong');
+                      return;
+                    }
+                    
+                    setIsSimulatingCall(true);
+                    setSimulationMsg(`[GAS] Men-generate Portofolio Estetik & Sertifikat lalu mengirim ke ${printDocument.email}...`);
+
+                    try {
+                      const payload = {
+                        studentData: {
+                          name: printDocument.studentName,
+                          nim: printDocument.studentNim.toString(),
+                          email: printDocument.email || '',
+                          role: printDocument.role || 'Anggota',
+                          periode: printDocument.periode || 3,
+                          tanggalMulai: printDocument.tanggalMulai || '',
+                          tanggalSelesai: printDocument.tanggalSelesai || '',
+                          nomorSurat: printDocument.nomorSurat || '-',
+                          overallGrade: printDocument.overallGrade
+                        },
+                        picEmail: activeUser?.email || '',
+                        logbooks: printDocument.logs,
+                        driveId: driveIdInput || import.meta.env.VITE_DRIVE_FOLDER_ID || '',
+                        portfolioId: portfolioTemplateInput || import.meta.env.VITE_TEMPLATE_PORTFOLIO_ID || '',
+                        slideId: slideTemplateInput || import.meta.env.VITE_TEMPLATE_M_SLIDES_ID || ''
+                      };
+                      const res = await fetch(gasUrl, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'send_email_certificate', payload })
+                      });
+                      const data = await res.json();
+                      setIsSimulatingCall(false);
+                      if (data.success) {
+                        Swal.fire({
+                          icon: 'success',
+                          title: '📧 Email Terkirim!',
+                          html: `<div style="text-align:left;font-size:13px">
+                            <b>From:</b> ${activeUser?.email || 'pic@vokasi.uny.ac.id'}<br/>
+                            <b>To:</b> ${printDocument.email}<br/>
+                            <b>Lampiran:</b> Sertifikat.pdf + Portofolio.pdf<br/><br/>
+                            <span style="color:#059669">${data.message}</span>
+                          </div>`,
+                          confirmButtonColor: '#003a70'
+                        });
+                      } else {
+                        customAlert('Gagal mengirim email: ' + (data.message || JSON.stringify(data)), 'error', 'Kesalahan Pengiriman Email');
+                      }
+                    } catch (err: any) {
+                      setIsSimulatingCall(false);
+                      customAlert('Gagal terhubung ke Google Apps Script: ' + err.message, 'error', 'Kesalahan Jaringan / CORS');
+                    }
                   }}
-                  className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md border border-sky-400"
+                  className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md border border-sky-400"
                 >
                   <Send className="w-4 h-4" />
-                  Kirim Email (PDF)
+                  {isSimulatingCall ? 'Mengirim...' : 'Kirim Email (PDF)'}
                 </button>
                 <button 
                   type="button"
@@ -5766,6 +5907,9 @@ reader.readAsDataURL(file);`}
                           nomorSurat: printDocument.nomorSurat || '-',
                           overallGrade: printDocument.overallGrade
                         },
+                        // PIC email as sender — GAS will use this for GmailApp.sendEmail(to, from, subject, body)
+                        picEmail: activeUser?.email || '',
+                        sendEmail: true, // instruct GAS to actually send email after export
                         logbooks: printDocument.logs,
                         driveId: driveIdInput || import.meta.env.VITE_DRIVE_FOLDER_ID || '',
                         portfolioId: portfolioTemplateInput || import.meta.env.VITE_TEMPLATE_PORTFOLIO_ID || '',
@@ -5787,7 +5931,7 @@ reader.readAsDataURL(file);`}
                       if (data.success) {
                         customAlert(`[BERHASIL] Sertifikat dan Portofolio telah diunduh ke komputer Anda.`, 'success', 'Export Selesai');
                         
-                        // 1. Download Sertifikat PDF dari Base64 secara otomatis
+                        // 1. Download Sertifikat PDF dari Base64
                         if (data.certBase64) {
                           const link = document.createElement('a');
                           link.href = `data:application/pdf;base64,${data.certBase64}`;
@@ -5797,20 +5941,19 @@ reader.readAsDataURL(file);`}
                           document.body.removeChild(link);
                         }
                         
-                        // 2. Download Portofolio PDF dari Base64 secara otomatis (Dihapus, diganti Print Browser)
-                        
-                        // Memanggil window.print() untuk Portofolio Estetik
-                        const originalDisplay = document.getElementById('root')?.style.display;
-                        if(document.getElementById('root')) document.getElementById('root')!.style.display = 'none';
-                        
-                        const printDiv = document.createElement('div');
-                        printDiv.id = 'print-section';
-                        printDiv.className = 'w-full bg-white';
-                        printDiv.innerHTML = document.getElementById('doc-print-container')?.outerHTML || '';
-                        document.body.appendChild(printDiv);
-                        
+                        // 2. Download Portofolio Estetik menggunakan Print Browser (Reliable)
                         setTimeout(() => {
+                          const originalDisplay = document.getElementById('root')?.style.display;
+                          if(document.getElementById('root')) document.getElementById('root')!.style.display = 'none';
+                          
+                          const printDiv = document.createElement('div');
+                          printDiv.id = 'print-section';
+                          printDiv.className = 'w-full bg-white';
+                          printDiv.innerHTML = document.getElementById('doc-print-container')?.outerHTML || '';
+                          document.body.appendChild(printDiv);
+                          
                           window.print();
+                          
                           document.body.removeChild(printDiv);
                           if(document.getElementById('root')) document.getElementById('root')!.style.display = originalDisplay || '';
                         }, 500);

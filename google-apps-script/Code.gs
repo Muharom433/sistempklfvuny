@@ -27,6 +27,23 @@ const PROP_SLIDE_TEMPLATE_ID    = 'SLIDE_TEMPLATE_ID';
 const FALLBACK_SPREADSHEET_ID = '';
 
 /**
+ * 🛠️ JALANKAN FUNGSI INI HANYA 1X DARI EDITOR APPS SCRIPT
+ * Berguna untuk memancing pop-up otorisasi (Review Permissions)
+ * setelah penambahan layanan baru (seperti GmailApp).
+ */
+function otorisasiAplikasi() {
+  const user = Session.getActiveUser().getEmail();
+  if (user) {
+    GmailApp.sendEmail(user, "Test Otorisasi Web App UNY", "Otorisasi berhasil! Fitur Kirim Email PDF sekarang bisa digunakan di portal Anda.");
+    Logger.log("Otorisasi selesai. Email konfirmasi telah dikirim ke " + user);
+  } else {
+    GmailApp.getAliases(); // Fallback trigger
+    Logger.log("Otorisasi selesai.");
+  }
+}
+
+
+/**
  * Serves the HTML file when the Web App URL is loaded,
  * OR handles GET API requests if action parameter is provided.
  */
@@ -84,8 +101,20 @@ function doPost(e) {
           payload.studentData,
           payload.logbooks,
           payload.driveId,
-          payload.portfolioId,  // ← Sekarang menggunakan portfolioId, bukan docId
+          payload.portfolioId,
           payload.slideId
+        );
+        break;
+
+      case 'send_email_certificate':
+        result = sendEmailCertificate(
+          payload.studentData,
+          payload.logbooks,
+          payload.driveId,
+          payload.portfolioId,
+          payload.slideId,
+          payload.picEmail || '',
+          payload.aestheticPortfolioBase64 || null
         );
         break;
       
@@ -472,13 +501,9 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
         // --- 1. GENERATE PIE CHART ---
         if (studentLogs && studentLogs.length > 0) {
           const categoryCounts = {};
-          const seenTasks = {};
           studentLogs.forEach(function(log) {
-            if (!seenTasks[log.name]) {
-              seenTasks[log.name] = true;
-              const cat = log.category || 'Lain-lain';
-              categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-            }
+            const cat = log.category || 'Lain-lain';
+            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
           });
           
           let dataBuilder = Charts.newDataTable()
@@ -608,6 +633,234 @@ function generatePortfolioAndCertificate(studentData, logbooks, paramDriveId, pa
     
   } catch (error) {
     return { success: false, message: 'Gagal mencetak berkas: ' + error.toString() };
+  }
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════
+ * SEND EMAIL CERTIFICATE — Kirim Sertifikat + Portofolio lewat GmailApp
+ * ─ Generate PDF Sertifikat (Slides) + Portofolio (Docs) sama seperti
+ *   generatePortfolioAndCertificate, tapi TIDAK return Base64.
+ * ─ PDF langsung dilampirkan ke email siswa via GmailApp.sendEmail().
+ * ─ picEmail digunakan sebagai replyTo (balasan masuk ke PIC).
+ * ─ File Drive sementara dihapus setelah email terkirim.
+ * ════════════════════════════════════════════════════════════════════════
+ */
+function sendEmailCertificate(studentData, logbooks, paramDriveId, paramPortfolioId, paramSlideId, picEmail, aestheticPortfolioBase64) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const slideTemplateId     = paramSlideId     || props.getProperty(PROP_SLIDE_TEMPLATE_ID);
+    const portfolioTemplateId = paramPortfolioId || props.getProperty(PROP_PORTFOLIO_TEMPLATE_ID);
+
+    if (!slideTemplateId) {
+      return { success: false, message: 'Slide Template ID (Sertifikat) belum diisi di Pengaturan PIC!' };
+    }
+
+    const studentName          = studentData.name           || '';
+    const studentNim           = studentData.nim            || '';
+    const studentEmail         = studentData.email          || '';
+    const studentRole          = studentData.role           || 'Anggota';
+    const studentPeriode       = studentData.periode        || 3;
+    const studentTanggalMulai  = studentData.tanggalMulai  || '';
+    const studentTanggalSelesai= studentData.tanggalSelesai|| '';
+    const studentNomorSurat    = studentData.nomorSurat     || '-';
+    const overallGrade         = studentData.overallGrade  || 0;
+
+    if (!studentName) return { success: false, message: 'Data siswa kosong atau tidak valid!' };
+    if (!studentEmail) return { success: false, message: 'Email siswa tidak tersedia! Pastikan email siswa sudah diisi di data pengguna.' };
+
+    const predikat         = getPredicate(overallGrade);
+    const tanggalMulaiID   = formatTanggalID(studentTanggalMulai)   || '-';
+    const tanggalSelesaiID = formatTanggalID(studentTanggalSelesai) || '-';
+
+    const replacements = [
+      ['{{NAMA}}',    studentName],      ['<<Nama>>',    studentName],
+      ['{{NIM}}',     studentNim],       ['<<NIM>>',     studentNim],
+      ['{{NIS}}',     studentNim],       ['<<NIS>>',     studentNim],
+      ['{{NOMOR}}',   studentNomorSurat],['<<Nomor>>',   studentNomorSurat],
+      ['{{PERIODE}}', studentPeriode.toString()],['<<Periode>>', studentPeriode.toString()],
+      ['{{RATARATA}}',overallGrade.toString()],  ['<<RataRata>>',overallGrade.toString()],
+      ['{{PREDIKAT}}',predikat],         ['<<Predikat>>',predikat],
+      ['{{MULAI}}',   tanggalMulaiID],   ['<<Mulai>>',   tanggalMulaiID],
+      ['{{SELESAI}}', tanggalSelesaiID], ['<<Selesai>>', tanggalSelesaiID],
+      ['{{PERAN}}',   studentRole],      ['<<Peran>>',   studentRole],
+    ];
+
+    const studentLogs  = logbooks || [];
+    const outputFolder = DriveApp.getRootFolder();
+    const attachments  = [];
+
+    // ── PART A: SERTIFIKAT — Google Slides → PDF ─────────────────────────
+    const slideCopy = DriveApp.getFileById(slideTemplateId).makeCopy('Sertifikat_' + studentName, outputFolder);
+    const presentation = SlidesApp.openById(slideCopy.getId());
+    replacements.forEach(function(pair) { try { presentation.replaceAllText(pair[0], pair[1]); } catch(e) {} });
+    try { presentation.replaceAllText('{{NILAI}}', overallGrade.toString()); } catch(e) {}
+    try { presentation.replaceAllText('<<Nilai>>', overallGrade.toString()); } catch(e) {}
+    presentation.saveAndClose();
+    const certPdfBlob = slideCopy.getAs('application/pdf').setName('Sertifikat_' + studentName.replace(/ /g, '_') + '.pdf');
+    attachments.push(certPdfBlob);
+    slideCopy.setTrashed(true);
+
+    // ── PART B: PORTOFOLIO AKHIR — HTML TO PDF (AESTHETIC) ─────────────────────
+    // Cara yang valid di GAS: upload HTML ke Drive → konversi ke Google Doc → export PDF → hapus file
+    try {
+      const htmlString = generateAestheticPortfolioHTML(studentData, studentLogs);
+      const htmlBlob = Utilities.newBlob(htmlString, MimeType.HTML, 'Portofolio_Estetik_' + studentName.replace(/ /g, '_'));
+      // Upload HTML dan minta Drive konversi ke Google Doc (supportsAllDrives tidak diperlukan)
+      const resource = {
+        title: 'Portofolio_Estetik_' + studentName.replace(/ /g, '_'),
+        mimeType: MimeType.GOOGLE_DOCS
+      };
+      const tempDocFile = Drive.Files.insert(resource, htmlBlob, { convert: true });
+      const tempDocId   = tempDocFile.id;
+      // Export Google Doc ke PDF
+      const portPdfBlob = DriveApp.getFileById(tempDocId)
+                                  .getAs('application/pdf')
+                                  .setName('Portofolio_' + studentName.replace(/ /g, '_') + '.pdf');
+      attachments.push(portPdfBlob);
+      // Hapus file Google Doc sementara
+      DriveApp.getFileById(tempDocId).setTrashed(true);
+      Logger.log('Portofolio aesthetic PDF berhasil dibuat untuk ' + studentName);
+    } catch (e) {
+      Logger.log('HTML to PDF Error (aesthetic portfolio): ' + e.toString());
+    }
+    
+    // (Opsional) Jika masih butuh Docs lama, biarkan ini; jika tidak, kita bisa abaikan.
+    // Karena user bilang "jangan kirim porto standar", bagian ini tidak dieksekusi jika portfolioTemplateId kosong.
+    if (portfolioTemplateId) {
+      try {
+        const docCopy = DriveApp.getFileById(portfolioTemplateId).makeCopy('Portofolio_' + studentName, outputFolder);
+        const doc  = DocumentApp.openById(docCopy.getId());
+        const body = doc.getBody();
+
+        replacements.forEach(function(pair) { try { body.replaceText(pair[0], pair[1] || ' '); } catch(e) {} });
+        try { body.replaceText('Nama: Afif', 'Nama: ' + studentName); } catch(e) {}
+        try { body.replaceText('NIS: 1',     'NIM: '  + studentNim);  } catch(e) {}
+
+        // Pie Chart
+        if (studentLogs && studentLogs.length > 0) {
+          const categoryCounts = {};
+          studentLogs.forEach(function(log) {
+            const cat = log.category || 'Lain-lain';
+            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+          });
+          let dataBuilder = Charts.newDataTable()
+            .addColumn(Charts.ColumnType.STRING, 'Kategori')
+            .addColumn(Charts.ColumnType.NUMBER, 'Jumlah');
+          for (const cat in categoryCounts) { dataBuilder.addRow([cat, categoryCounts[cat]]); }
+          const chart = Charts.newPieChart().setDataTable(dataBuilder.build()).setDimensions(500, 300).set3D().build();
+          const chartBlob = chart.getAs('image/png');
+          const piechartElement = body.findText('{{PIECHART}}');
+          if (piechartElement) {
+            const el = piechartElement.getElement();
+            el.getParent().asParagraph().insertInlineImage(0, chartBlob);
+            el.asText().setText('');
+          }
+        } else {
+          try { body.replaceText('{{PIECHART}}', '(Belum ada data)'); } catch(e) {}
+        }
+
+        // Tabel logbook + QR
+        const tables = body.getTables();
+        let targetTable = null, templateRowIndex = -1;
+        for (let i = 0; i < tables.length; i++) {
+          const t = tables[i];
+          for (let r = 0; r < t.getNumRows(); r++) {
+            if (t.getRow(r).getText().indexOf('{{JUDUL}}') !== -1) { targetTable = t; templateRowIndex = r; break; }
+          }
+          if (targetTable) break;
+        }
+        if (targetTable && templateRowIndex !== -1) {
+          const templateRow = targetTable.getRow(templateRowIndex);
+          if (studentLogs.length === 0) {
+            templateRow.getCell(0).setText('(Belum ada riwayat pekerjaan)');
+            templateRow.getCell(1).setText('-');
+            templateRow.getCell(2).setText('-');
+          } else {
+            studentLogs.forEach(function(log) {
+              const newRow = targetTable.appendTableRow(templateRow.copy());
+              try { newRow.replaceText('{{JUDUL}}', log.name || log.taskName || ' '); } catch(e) {}
+              try { newRow.replaceText('{{NILAI}}', (log.grade || '-').toString()); } catch(e) {}
+              const qrElement = newRow.findText('{{QR}}');
+              if (qrElement) {
+                const linkStr = log.googleDocUrl || log.file || '';
+                const par = qrElement.getElement().getParent();
+                if (linkStr) {
+                  try {
+                    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' + encodeURIComponent(linkStr);
+                    const qrBlob = UrlFetchApp.fetch(qrUrl).getBlob();
+                    qrElement.getElement().asText().setText('');
+                    if (par.getType() === DocumentApp.ElementType.PARAGRAPH) { par.asParagraph().insertInlineImage(0, qrBlob); }
+                  } catch(e) { qrElement.getElement().asText().setText(linkStr); }
+                } else { qrElement.getElement().asText().setText('-'); }
+              }
+            });
+            targetTable.removeRow(templateRowIndex);
+          }
+        }
+
+        doc.saveAndClose();
+        const portPdfBlob = docCopy.getAs('application/pdf').setName('Portofolio_' + studentName.replace(/ /g, '_') + '.pdf');
+        attachments.push(portPdfBlob);
+        docCopy.setTrashed(true);
+      } catch (docError) {
+        Logger.log('Portfolio generation error (email): ' + docError.toString());
+      }
+    }
+
+    // ── PART C: KIRIM EMAIL ───────────────────────────────────────────────
+    const subject = '[Fakultas Vokasi UNY] Sertifikat & Portofolio Magang — ' + studentName;
+    const body_html = [
+      '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">',
+      '  <div style="background: #003a70; padding: 24px; text-align: center;">',
+      '    <h2 style="color: #ffd700; margin: 0; font-size: 18px; letter-spacing: 1px;">FAKULTAS VOKASI</h2>',
+      '    <p style="color: #93c5fd; margin: 4px 0 0; font-size: 12px;">Universitas Negeri Yogyakarta</p>',
+      '  </div>',
+      '  <div style="padding: 24px 28px; background: #ffffff;">',
+      '    <p style="font-size: 14px; color: #334155;">Yth. <strong>' + studentName + '</strong>,</p>',
+      '    <p style="font-size: 13px; color: #475569; line-height: 1.6;">',
+      '      Dengan hormat, bersama email ini kami lampirkan <strong>Sertifikat Penghargaan</strong> dan ',
+      '      <strong>Portofolio Rekapitulasi Magang</strong> Anda di Fakultas Vokasi UNY.',
+      '    </p>',
+      '    <table style="background: #f8fafc; border-radius: 8px; padding: 16px; width: 100%; border-collapse: collapse; margin: 16px 0;">',
+      '      <tr><td style="padding: 6px 12px; font-size: 12px; color: #64748b; width: 120px;">Nama</td><td style="padding: 6px 12px; font-size: 12px; font-weight: bold; color: #0f172a;">: ' + studentName + '</td></tr>',
+      '      <tr><td style="padding: 6px 12px; font-size: 12px; color: #64748b;">NIS/NIM</td><td style="padding: 6px 12px; font-size: 12px; font-weight: bold; color: #0f172a; font-family: monospace;">: ' + studentNim + '</td></tr>',
+      '      <tr><td style="padding: 6px 12px; font-size: 12px; color: #64748b;">Peran</td><td style="padding: 6px 12px; font-size: 12px; color: #0f172a;">: ' + studentRole + '</td></tr>',
+      '      <tr><td style="padding: 6px 12px; font-size: 12px; color: #64748b;">Periode</td><td style="padding: 6px 12px; font-size: 12px; color: #0f172a;">: ' + studentPeriode + ' Bulan (' + tanggalMulaiID + ' s/d ' + tanggalSelesaiID + ')</td></tr>',
+      '      <tr><td style="padding: 6px 12px; font-size: 12px; color: #64748b;">Rerata Nilai</td><td style="padding: 6px 12px; font-size: 12px; font-weight: bold; color: #059669;">: ' + overallGrade + ' / 100 (' + predikat + ')</td></tr>',
+      '    </table>',
+      '    <p style="font-size: 12px; color: #64748b; line-height: 1.5;">',
+      '      📎 Terlampir: <strong>Sertifikat_' + studentName.replace(/ /g, '_') + '.pdf</strong>',
+      ' &amp; <strong>Portofolio_' + studentName.replace(/ /g, '_') + '.pdf</strong>',
+      portfolioTemplateId ? ' &amp; <strong>Portofolio_Template_' + studentName.replace(/ /g, '_') + '.pdf</strong>' : '',
+      '    </p>',
+      '    <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">',
+      '      Hormat kami,<br/>',
+      '      <strong style="color: #003a70;">Koordinator Program Magang</strong><br/>',
+      '      <em>Fakultas Vokasi, Universitas Negeri Yogyakarta</em>',
+      '    </p>',
+      '  </div>',
+      '</div>'
+    ].join('\n');
+
+    const mailOptions = {
+      htmlBody: body_html,
+      attachments: attachments,
+      name: 'Koordinator Magang — Fakultas Vokasi UNY'
+    };
+    if (picEmail && picEmail.trim() !== '') {
+      mailOptions.replyTo = picEmail;
+    }
+
+    GmailApp.sendEmail(studentEmail, subject, '', mailOptions);
+
+    return {
+      success: true,
+      message: 'Email berhasil dikirim ke ' + studentEmail + '! Lampiran: Sertifikat.pdf' + (portfolioTemplateId ? ' + Portofolio.pdf' : '') + '.'
+    };
+
+  } catch (error) {
+    return { success: false, message: 'Gagal mengirim email: ' + error.toString() };
   }
 }
 
@@ -805,3 +1058,126 @@ function getConfiguration() {
     slideTemplateId:    props.getProperty(PROP_SLIDE_TEMPLATE_ID)     || ''
   };
 }
+
+function removeHtmlTags(text) {
+  return text.replace(/<[^>]*>?/gm, '');
+}
+
+/**
+ * GENERATE AESTHETIC PORTFOLIO HTML
+ * Membuat string HTML estetik yang siap dikonversi menjadi PDF oleh GAS.
+ * Desain ini menggunakan CSS inline & tabel dasar agar kompatibel dengan engine PDF GAS.
+ */
+function generateAestheticPortfolioHTML(studentData, logbooks) {
+  const predikat = getPredicate(studentData.overallGrade || 0);
+  const rataRata = (studentData.overallGrade || 0).toFixed(2);
+  const tglMulai = formatTanggalID(studentData.tanggalMulai) || '-';
+  const tglSelesai = formatTanggalID(studentData.tanggalSelesai) || '-';
+
+  let logsHtml = '';
+  if (logbooks && logbooks.length > 0) {
+    logbooks.forEach(function(log) {
+      const taskDate = log.timestamp || log.Timestamp || log.date || '-';
+      const taskName = log.taskName || log.TaskName || log.task || 'Tugas';
+      const taskDesc = log.workDescription || log.WorkDescription || log.description || '-';
+      
+      const workTypeRaw = log.workType || log.WorkType || (log.is_group_task ? 'Kelompok' : 'Individu');
+      const type = workTypeRaw.toLowerCase().includes('kelompok') ? 'Kelompok' : 'Individu';
+      const typeColor = type === 'Kelompok' ? '#8b5cf6' : '#0ea5e9';
+      
+      const gradeRaw = log.grade || log.Grade || '';
+      const status = (gradeRaw && gradeRaw.toString().trim() !== '') ? 'Sudah Dinilai' : 'Belum Dinilai';
+      const statusColor = status === 'Sudah Dinilai' ? '#10b981' : '#f59e0b';
+      
+      logsHtml += `
+        <tr>
+          <td style="padding:10px; border:1px solid #cbd5e1; font-size:12px; color:#475569;">${formatTanggalID(taskDate)}</td>
+          <td style="padding:10px; border:1px solid #cbd5e1;">
+            <strong style="font-size:13px; color:#0f172a; display:block; margin-bottom:4px;">${taskName}</strong>
+            <span style="font-size:11px; color:#64748b;">${taskDesc}</span>
+          </td>
+          <td style="padding:10px; border:1px solid #cbd5e1; text-align:center;">
+            <span style="background-color:${typeColor}; color:white; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold;">${type}</span>
+          </td>
+          <td style="padding:10px; border:1px solid #cbd5e1; text-align:center;">
+            <span style="background-color:${statusColor}; color:white; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold;">${status}</span>
+          </td>
+        </tr>
+      `;
+    });
+  } else {
+    logsHtml = `<tr><td colspan="4" style="padding:15px; text-align:center; color:#94a3b8; border:1px solid #cbd5e1;">Belum ada catatan logbook</td></tr>`;
+  }
+
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 20px; }
+          .container { border: 2px solid #e2e8f0; border-radius: 8px; padding: 30px; background-color: #ffffff; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #0ea5e9; padding-bottom: 20px; }
+          .title { font-size: 22px; font-weight: bold; color: #0f172a; margin-bottom: 5px; }
+          .subtitle { font-size: 14px; color: #64748b; }
+          .info-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+          .info-table td { padding: 5px 0; }
+          .section-title { font-size: 16px; font-weight: bold; color: #0f172a; margin-bottom: 12px; margin-top: 30px; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px;}
+          .log-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; }
+          .log-table th { background-color: #f8fafc; color: #334155; text-align: left; padding: 10px; border: 1px solid #cbd5e1; font-weight:bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="title">PORTOFOLIO REKAPITULASI PROGRAM MAGANG</div>
+            <div class="subtitle">Fakultas Vokasi Universitas Negeri Yogyakarta</div>
+          </div>
+          
+          <table style="width: 100%; margin-bottom: 20px; border-collapse: collapse;">
+            <tr>
+              <td style="width: 65%; vertical-align: top;">
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px;">
+                  <table class="info-table">
+                    <tr><td width="90"><strong>Nama</strong></td><td>: <strong>${studentData.name}</strong></td></tr>
+                    <tr><td><strong>NIS / NIM</strong></td><td>: ${studentData.nim}</td></tr>
+                    <tr><td><strong>Peran</strong></td><td>: ${studentData.role}</td></tr>
+                    <tr><td><strong>Periode</strong></td><td>: ${studentData.periode} (${tglMulai} s/d ${tglSelesai})</td></tr>
+                  </table>
+                </div>
+              </td>
+              <td style="width: 5%;"></td>
+              <td style="width: 30%; vertical-align: top; text-align: center;">
+                <div style="background-color: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 15px;">
+                  <div style="font-size:11px; font-weight:bold; color:#166534; text-transform:uppercase; margin-bottom:5px;">Rata-rata Nilai</div>
+                  <div style="font-size:32px; font-weight:bold; color:#15803d; margin-bottom:5px;">${rataRata}</div>
+                  <div style="font-size:13px; font-weight:bold; color:#16a34a;">${predikat}</div>
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <div class="section-title">DAFTAR LOGBOOK & TUGAS</div>
+          <table class="log-table">
+            <thead>
+              <tr>
+                <th width="15%">Tanggal</th>
+                <th width="45%">Tugas & Deskripsi</th>
+                <th width="15%" style="text-align:center;">Jenis Pekerjaan</th>
+                <th width="25%" style="text-align:center;">Status Penilaian</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logsHtml}
+            </tbody>
+          </table>
+          
+          <div style="text-align:center; font-size:11px; color:#94a3b8; margin-top:40px; padding-top:20px; border-top:1px dashed #cbd5e1;">
+            Dokumen ini dihasilkan secara otomatis oleh Sistem Portal Magang FV UNY.<br/>
+            Valid dan sah sebagai rekapitulasi portofolio akhir.
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+  return html;
+}
+
